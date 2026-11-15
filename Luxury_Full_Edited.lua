@@ -1101,14 +1101,14 @@ table.insert(conns, RunService.Heartbeat:Connect(function()
 	end
 end))
 
--- ===================== الواجهة DAZ Style =====================
+-- ===================== الواجهة DAZ x 0 =====================
 local P = {
 	bg0 = Color3.fromHex("#0A0A12"),
 	bg1 = Color3.fromHex("#1A1A2E"),
 	card = Color3.fromHex("#12121F"),
 	card2 = Color3.fromHex("#1E1E32"),
-	a1 = Color3.fromHex("#FF003C"),
-	a2 = Color3.fromHex("#FF7800"),
+	a1 = Color3.fromRGB(255, 0, 60),
+	a2 = Color3.fromRGB(255, 120, 0),
 	ok = Color3.fromRGB(56, 214, 140),
 	bad = Color3.fromRGB(255, 84, 104),
 	text = Color3.fromRGB(240, 243, 255),
@@ -1118,12 +1118,11 @@ local P = {
 
 local mapImage = "rbxassetid://137420246811640"
 local playerName = (lp.DisplayName ~= "" and lp.DisplayName) or lp.Name
-local thumb = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. lp.UserId .. "&width=420&height=420&format=png"
+local thumb = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(lp.UserId) .. "&width=420&height=420&format=png"
 
-local KEYBOARD_SOUND = "rbxassetid://9118828568"
 local function clickSnd()
 	local s = Instance.new("Sound")
-	s.SoundId = KEYBOARD_SOUND
+	s.SoundId = "rbxassetid://9118828568"
 	s.Volume = 0.55
 	s.Parent = SoundService
 	s:Play()
@@ -1138,75 +1137,126 @@ local function openSnd()
 	game:GetService("Debris"):AddItem(s, 1)
 end
 
-local gui = new("ScreenGui", {Name = "LuxuryFull", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true}, PlayerGui)
-local blur = Instance.new("BlurEffect", Lighting)
-blur.Size = 0
+local gui = new("ScreenGui", {
+	Name = "DAZ_x0", ResetOnSpawn = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true
+}, PlayerGui)
 
--- زر الفتح العائم
-local openBtn = new("TextButton", {
-	Size = UDim2.fromOffset(70, 40), Position = UDim2.new(0.5, -35, 0, 18),
-	Text = "DAZ", BackgroundColor3 = Color3.fromRGB(15, 15, 15), TextColor3 = Color3.new(1,1,1),
-	Font = Enum.Font.GothamBlack, TextSize = 16, ZIndex = 50, AutoButtonColor = false
+-- ===== الترحيب =====
+local welcome = new("Frame", {
+	Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(5, 5, 8), ZIndex = 100
 }, gui)
-corner(openBtn, 20)
-local openGrad = new("UIGradient", {
+
+local avatar = new("ImageLabel", {
+	Size = UDim2.fromOffset(150, 150), Position = UDim2.new(0.5, -75, -0.3, 0),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255), Image = thumb, ZIndex = 101
+}, welcome)
+corner(avatar, 75)
+
+local nameLabel = new("TextLabel", {
+	Size = UDim2.fromOffset(400, 60), Position = UDim2.new(1.2, 0, 0.52, 0),
+	BackgroundTransparency = 1, Text = playerName, TextScaled = true,
+	Font = Enum.Font.GothamBlack, TextColor3 = Color3.new(1, 1, 1), ZIndex = 101
+}, welcome)
+
+local hello = new("TextLabel", {
+	Size = UDim2.fromOffset(400, 40), Position = UDim2.new(0.5, -200, 0.62, 0),
+	BackgroundTransparency = 1, Text = "هلو يفندم", TextScaled = true,
+	Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(255, 200, 0),
+	TextTransparency = 1, ZIndex = 101
+}, welcome)
+
+local mapMini = new("ImageLabel", {
+	Size = UDim2.fromOffset(100, 100), Position = UDim2.fromOffset(20, 20),
+	Image = mapImage, BackgroundTransparency = 1, ZIndex = 101
+}, welcome)
+corner(mapMini, 18)
+
+local loadBG = new("Frame", {
+	Size = UDim2.fromOffset(350, 12), Position = UDim2.new(0.5, -175, 0.75, 0),
+	BackgroundColor3 = Color3.fromRGB(25, 25, 30), ZIndex = 101
+}, welcome)
+corner(loadBG, 6)
+
+local loadFill = new("Frame", {
+	Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 102
+}, loadBG)
+corner(loadFill, 6)
+new("UIGradient", {
 	Color = ColorSequence.new{
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,60)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255,120,0)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(255,0,150)),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 60)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 120, 0)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 150)),
 	}
-}, openBtn)
+}, loadFill)
 
--- النافذة الرئيسية (DAZ)
+local percent = new("TextLabel", {
+	Size = UDim2.fromOffset(350, 30), Position = UDim2.new(0.5, -175, 0.79, 0),
+	BackgroundTransparency = 1, Text = "0%", Font = Enum.Font.GothamBold,
+	TextScaled = true, TextColor3 = Color3.new(1, 1, 1), ZIndex = 101
+}, welcome)
+
+local skipBtn = new("TextButton", {
+	Size = UDim2.fromOffset(120, 38), Position = UDim2.new(1, -140, 1, -60),
+	Text = "تخطي", Font = Enum.Font.GothamBold, TextScaled = true,
+	TextColor3 = Color3.new(1, 1, 1), BackgroundColor3 = Color3.fromRGB(20, 20, 25),
+	AutoButtonColor = false, ZIndex = 101
+}, welcome)
+corner(skipBtn, 19)
+
+-- ===== النافذة الرئيسية (أصغر) =====
+local MAIN_W, MAIN_H = 480, 320
 local main = new("Frame", {
-	Size = UDim2.fromOffset(540, 380), Position = UDim2.new(0.5, -270, 0.5, -190),
-	BackgroundColor3 = Color3.fromRGB(0,0,0), BackgroundTransparency = 0.15,
-	Active = true, Visible = false, ZIndex = 10, ClipsDescendants = true
+	Size = UDim2.fromOffset(MAIN_W, MAIN_H), Position = UDim2.new(0.5, -MAIN_W/2, 0.5, -MAIN_H/2),
+	BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.15,
+	Visible = false, ClipsDescendants = true, Active = true, ZIndex = 10
 }, gui)
-corner(main, 18)
+corner(main, 16)
 
 local bgImage = new("ImageLabel", {
-	Size = UDim2.new(1,0,1,0), Image = mapImage, ImageTransparency = 0.78,
+	Size = UDim2.new(1, 0, 1, 0), Image = mapImage, ImageTransparency = 0.78,
 	BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Crop, ZIndex = 0
 }, main)
-corner(bgImage, 18)
+corner(bgImage, 16)
 
 local shade = new("Frame", {
-	Size = UDim2.new(1,0,1,0), BackgroundColor3 = Color3.fromRGB(0,0,0),
+	Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 	BackgroundTransparency = 0.55, ZIndex = 1
 }, main)
-corner(shade, 18)
+corner(shade, 16)
 
--- شريط علوي
-local topBar = new("Frame", {Size = UDim2.new(1, 0, 0, 60), BackgroundTransparency = 1, ZIndex = 5}, main)
+local topBar = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1, ZIndex = 5
+}, main)
 
 local miniAvatar = new("ImageLabel", {
-	Size = UDim2.fromOffset(42, 42), Position = UDim2.fromOffset(14, 9),
+	Size = UDim2.fromOffset(36, 36), Position = UDim2.fromOffset(12, 8),
 	Image = thumb, BackgroundTransparency = 1, ZIndex = 6
 }, topBar)
-corner(miniAvatar, 21)
+corner(miniAvatar, 18)
 
 new("TextLabel", {
-	Size = UDim2.fromOffset(120, 42), Position = UDim2.fromOffset(60, 9),
+	Size = UDim2.fromOffset(110, 36), Position = UDim2.fromOffset(54, 8),
 	BackgroundTransparency = 1, Text = playerName, Font = Enum.Font.GothamBold,
-	TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.new(1,1,1), ZIndex = 6
+	TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.new(1, 1, 1), ZIndex = 6
 }, topBar)
 
--- حروف DAZ
 local dazBtn = new("TextButton", {
-	Size = UDim2.fromOffset(110, 45), Position = UDim2.new(0.5, -55, 0, 8),
-	BackgroundTransparency = 1, Text = "", ZIndex = 6
+	Size = UDim2.fromOffset(130, 40), Position = UDim2.new(0.5, -65, 0, 6),
+	BackgroundTransparency = 1, Text = "", ZIndex = 6, AutoButtonColor = false
 }, topBar)
+
 local dazLetters = {}
 local function dazLetter(char, color, x)
 	local l = new("TextLabel", {
-		Size = UDim2.fromOffset(36, 45), Position = UDim2.fromOffset(x, 0),
+		Size = UDim2.fromOffset(28, 40), Position = UDim2.fromOffset(x, 0),
 		BackgroundTransparency = 1, Text = char, Font = Enum.Font.GothamBlack,
-		TextSize = 38, TextColor3 = color, ZIndex = 7
+		TextSize = 28, TextColor3 = color, ZIndex = 7
 	}, dazBtn)
-	local grad = new("UIGradient", {
+	new("UIGradient", {
 		Color = ColorSequence.new{
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(255,255,255)),
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
 			ColorSequenceKeypoint.new(0.4, color),
 			ColorSequenceKeypoint.new(1, color),
 		}, Rotation = 90
@@ -1214,85 +1264,110 @@ local function dazLetter(char, color, x)
 	table.insert(dazLetters, l)
 	return l
 end
-dazLetter("D", Color3.fromRGB(255,20,50), 0)
-dazLetter("A", Color3.fromRGB(255,130,0), 36)
-dazLetter("Z", Color3.fromRGB(255,0,160), 72)
+-- DAZ x 0
+dazLetter("D", Color3.fromRGB(255, 20, 50), 0)
+dazLetter("A", Color3.fromRGB(255, 130, 0), 26)
+dazLetter("Z", Color3.fromRGB(255, 0, 160), 52)
+dazLetter("x", Color3.fromRGB(200, 200, 210), 80)
+dazLetter("0", Color3.fromRGB(255, 80, 120), 102)
 
-local function makeTopBtn(text, x, color)
+local function makeTopBtn(text, xOff, color)
 	local b = new("TextButton", {
-		Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -44 - x, 0, 12),
-		Text = text, Font = Enum.Font.GothamBlack, TextSize = 15,
-		TextColor3 = Color3.new(1,1,1), BackgroundColor3 = color,
+		Size = UDim2.fromOffset(32, 32), Position = UDim2.new(1, -40 - xOff, 0, 10),
+		Text = text, Font = Enum.Font.GothamBlack, TextSize = 14,
+		TextColor3 = Color3.new(1, 1, 1), BackgroundColor3 = color,
 		BackgroundTransparency = 0.15, AutoButtonColor = false, ZIndex = 6
 	}, topBar)
-	corner(b, 18)
+	corner(b, 16)
 	return b
 end
-local closeBtn = makeTopBtn("✕", 0, Color3.fromRGB(30,30,35))
-local miniBtn = makeTopBtn("—", 44, Color3.fromRGB(30,30,35))
-local pinBtn = makeTopBtn("📍", 88, Color3.fromRGB(30,30,35))
+local closeBtn = makeTopBtn("✕", 0, Color3.fromRGB(30, 30, 35))
+local miniBtn = makeTopBtn("—", 40, Color3.fromRGB(30, 30, 35))
+local pinBtn = makeTopBtn("📍", 80, Color3.fromRGB(30, 30, 35))
 
 local statusLbl = new("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -22),
+	Size = UDim2.new(1, 0, 0, 16), Position = UDim2.new(0, 0, 1, -18),
 	BackgroundTransparency = 1, Text = "غير مثبت  •  تقدر تحركها",
 	Font = Enum.Font.GothamBold, TextSize = 11,
-	TextColor3 = Color3.fromRGB(150,150,160), ZIndex = 5
+	TextColor3 = Color3.fromRGB(150, 150, 160), ZIndex = 5
 }, main)
 
--- الشريط الجانبي
+-- شريط جانبي أصغر
 local side = new("Frame", {
-	Position = UDim2.fromOffset(12, 68), Size = UDim2.fromOffset(130, 280),
-	BackgroundColor3 = Color3.fromRGB(12,12,18), BackgroundTransparency = 0.35, ZIndex = 4
+	Position = UDim2.fromOffset(10, 58), Size = UDim2.fromOffset(118, 240),
+	BackgroundColor3 = Color3.fromRGB(12, 12, 18), BackgroundTransparency = 0.35, ZIndex = 4
 }, main)
-corner(side, 14)
+corner(side, 12)
 stroke(side, P.line, 1, 0.5)
 
 local sideList = new("ScrollingFrame", {
 	Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
-	ScrollBarThickness = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ZIndex = 4
+	ScrollBarThickness = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	CanvasSize = UDim2.new(), ZIndex = 4
 }, side)
-new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, sideList)
-new("UIPadding", {PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8)}, sideList)
+new("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, sideList)
+new("UIPadding", {
+	PaddingTop = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6),
+	PaddingRight = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6)
+}, sideList)
+
+-- زر عائم بعد التصغير
+local miniFloat = new("TextButton", {
+	Size = UDim2.fromOffset(70, 36), Position = UDim2.new(0.5, -35, 0, 16),
+	Text = "DAZ x 0", Font = Enum.Font.GothamBlack, TextSize = 12,
+	TextColor3 = Color3.new(1, 1, 1), BackgroundColor3 = Color3.fromRGB(15, 15, 15),
+	Visible = false, AutoButtonColor = false, ZIndex = 50
+}, gui)
+corner(miniFloat, 18)
+new("UIGradient", {
+	Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 60)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 120, 0)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 150)),
+	}
+}, miniFloat)
 
 local isPinned = false
 local dragging, dragStart, startPos = false, nil, nil
 topBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 and not isPinned then
+	if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not isPinned then
 		dragging = true
 		dragStart = input.Position
 		startPos = main.Position
 	end
 end)
 table.insert(conns, UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - dragStart
 		main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	end
 end))
 table.insert(conns, UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
 end))
 
 pinBtn.MouseButton1Click:Connect(function()
 	clickSnd()
 	isPinned = not isPinned
 	if isPinned then
-		pinBtn.BackgroundColor3 = Color3.fromRGB(255,0,90)
+		pinBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 90)
 		pinBtn.Text = "📌"
 		statusLbl.Text = "مثبت  •  PINNED"
-		statusLbl.TextColor3 = Color3.fromRGB(255,0,90)
+		statusLbl.TextColor3 = Color3.fromRGB(255, 0, 90)
 	else
-		pinBtn.BackgroundColor3 = Color3.fromRGB(30,30,35)
+		pinBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 		pinBtn.Text = "📍"
 		statusLbl.Text = "غير مثبت  •  تقدر تحركها"
-		statusLbl.TextColor3 = Color3.fromRGB(150,150,160)
+		statusLbl.TextColor3 = Color3.fromRGB(150, 150, 160)
 	end
 end)
 
 local pages, tabBtns = {}, {}
 local function newPage(id)
 	local f = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(150, 68), Size = UDim2.new(1, -162, 1, -92),
+		Position = UDim2.fromOffset(136, 58), Size = UDim2.new(1, -146, 1, -78),
 		BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
 		ScrollBarImageColor3 = P.a1, AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(), Visible = false, ScrollingDirection = Enum.ScrollingDirection.Y
@@ -1314,7 +1389,7 @@ local function showTab(id)
 end
 
 local TABS = {
-	{"main", "⚡", T("الأسيست", "Assist")},
+	{"main", "⚡", T("الأوتو", "Auto")},
 	{"skins", "👤", T("السكنات", "Skins")},
 	{"fx", "✨", T("تأثيرات القتل", "Kill FX")},
 	{"songs", "🎵", T("الأغاني", "Songs")},
@@ -1325,7 +1400,7 @@ local TABS = {
 
 for n, t in ipairs(TABS) do
 	local b = new("TextButton", {
-		Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 38),
+		Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 32),
 		BackgroundTransparency = 1, LayoutOrder = n, ClipsDescendants = true
 	}, sideList)
 	corner(b, 10)
@@ -1490,8 +1565,97 @@ end
 -- ===================== صفحة الأوتو والأسيست =====================
 local pMain = newPage("main")
 do
-	section(pMain, T("الأسيست", "ASSIST"))
-	note(pMain, T("اضغط الزر تحت عشان تشغّل أسست تراكر (المطاردة التلقائية).", "Press the button below to run Assist Tracker (auto chase)."))
+	local st = {assist = false, grab = false, jump = false, auto = false, stick = false, grabDelay = 10, wallDist = 4}
+
+	-- زر عائم للأوتو
+	local AutoGui = new("Frame", {
+		Name = "LuxuryAutoMini", Position = UDim2.new(0.04, 0, 0.38, 0),
+		Size = UDim2.fromOffset(175, 100), BackgroundColor3 = P.bg1, Active = true, Visible = false, ZIndex = 40
+	}, gui)
+	corner(AutoGui, 14)
+	stroke(AutoGui, P.a1, 2, 0.15)
+	new("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), Text = T("الأوتو", "AUTO"),
+		TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBlack, TextSize = 16, ZIndex = 41
+	}, AutoGui)
+	local AutoBtn = new("TextButton", {
+		Position = UDim2.new(0.08, 0, 0, 36), Size = UDim2.new(0.84, 0, 0, 48),
+		Text = T("تفعيل", "START"), AutoButtonColor = false, BackgroundColor3 = P.ok,
+		TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBlack, TextSize = 18, ZIndex = 41
+	}, AutoGui)
+	corner(AutoBtn, 12)
+	local FollowingState = false
+	local function renderAuto()
+		AutoBtn.Text = FollowingState and T("إيقاف", "STOP") or T("تفعيل", "START")
+		AutoBtn.BackgroundColor3 = FollowingState and P.bad or P.ok
+	end
+	AutoBtn.MouseButton1Click:Connect(function()
+		FollowingState = not FollowingState
+		renderAuto()
+	end)
+	-- سحب الزر
+	do
+		local drag, ds, sp = false, nil, nil
+		AutoGui.InputBegan:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+				drag, ds, sp = true, i.Position, AutoGui.Position
+			end
+		end)
+		table.insert(conns, UserInputService.InputChanged:Connect(function(i)
+			if drag and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then
+				local d = i.Position - ds
+				AutoGui.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+			end
+		end))
+		table.insert(conns, UserInputService.InputEnded:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
+		end))
+	end
+	table.insert(conns, RunService.RenderStepped:Connect(function()
+		if closed or not (AutoGui.Visible and FollowingState) then return end
+		if MohamedAssist.manualHeld() then return end
+		local MyChar = lp.Character
+		local MyHum = MyChar and MyChar:FindFirstChildOfClass("Humanoid")
+		local MyRoot = MyChar and MyChar:FindFirstChild("HumanoidRootPart")
+		if not (MyHum and MyRoot) or MyHum.Health <= 0 then return end
+		local HasTool = MyChar:FindFirstChildOfClass("Tool")
+		local grabOn = MohamedAssist.isGrab()
+		if HasTool or grabOn then
+			local TargetRoot = MohamedAssist.pickTarget(MyRoot, (not HasTool) and grabOn, 1e9)
+			if TargetRoot then MyHum:MoveTo(TargetRoot.Position) end
+		end
+	end))
+
+	section(pMain, T("الأوتو والأدوات", "AUTO & TOOLS"))
+	toggle(pMain, T("الأوتو", "Auto"), T("يطلع زر عائم تشغّل منه الأوتو", "Shows floating Auto button"), function() return st.auto end, function(v)
+		st.auto = v
+		AutoGui.Visible = v
+		if not v then FollowingState = false renderAuto() end
+	end)
+	toggle(pMain, T("أوتو قراب", "Auto Grab"), T("ياخذ القنبلة لما تقرب", "Takes the bomb when close"), function() return st.grab end, function(v)
+		st.grab = v
+		MohamedAssist.SetGrab(v)
+	end)
+	slider(pMain, T("عداد الأوتو قراب (ثواني)", "Auto Grab timer (sec)"), 1, 10, 1, function() return st.grabDelay end, function(v)
+		st.grabDelay = v
+		MohamedAssist.SetGrabDelay(v)
+	end, function(v) return tostring(v) .. "s" end)
+	toggle(pMain, T("أوتو نط", "Auto Jump"), T("ينط مع الخصم", "Jumps with the opponent"), function() return st.jump end, function(v)
+		st.jump = v
+		MohamedAssist.SetJump(v)
+	end)
+	toggle(pMain, T("بدون تعلق بالجدران", "No wall stick"), T("يمنعك تقرب من الجدار أكتر من المسافة", "Stops you from getting too close to walls"), function() return st.stick end, function(v)
+		st.stick = v
+		MohamedAssist.SetAntiStick(v)
+	end)
+	slider(pMain, T("مسافة الجدار (1-10)", "Wall distance (1-10)"), 1, 10, 1, function() return st.wallDist end, function(v)
+		st.wallDist = v
+		MohamedAssist.SetWallDist(v)
+	end, function(v) return tostring(v) end)
+	note(pMain, T("الأوتو والقراب والنط شغالين من فوق. للمطاردة استخدم أسست تراكر تحت.", "Auto/Grab/Jump above. For chase use Assist Tracker below."))
+
+	-- ===== أسست تراكر + فليك/نظر/أسيست =====
+	section(pMain, T("أدوات إضافية", "EXTRA TOOLS"))
 
 	local trackerLoaded = false
 	button(pMain, "🎯  " .. T("تشغيل أسست تراكر", "Start Assist Tracker"), function()
@@ -1644,23 +1808,15 @@ end)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
 local player = Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
 local root = char:WaitForChild("HumanoidRootPart")
 local humanoid = char:WaitForChild("Humanoid")
-
-local wallJumpOn = false
-local lookOn = false
-local assistOn = false
-local isFlicking = false
-
+local wallJumpOn, lookOn, assistOn, isFlicking = false, false, false, false
 local gui = Instance.new("ScreenGui")
 gui.Name = "MyMapHub"
 gui.ResetOnSpawn = false
-local parentContainer = (gethui and gethui()) or game:GetService("CoreGui") or player:FindFirstChildOfClass("PlayerGui")
-gui.Parent = parentContainer
-
+gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") or player:FindFirstChildOfClass("PlayerGui")
 local openBtn = Instance.new("TextButton")
 openBtn.Size = UDim2.new(0, 40, 0, 40)
 openBtn.Position = UDim2.new(0, 12, 0.5, -20)
@@ -1671,7 +1827,6 @@ openBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 openBtn.BorderSizePixel = 0
 openBtn.Parent = gui
 Instance.new("UICorner", openBtn).CornerRadius = UDim.new(1, 0)
-
 local main = Instance.new("Frame")
 main.Size = UDim2.new(0, 190, 0, 160)
 main.Position = UDim2.new(0.5, -95, 0.5, -80)
@@ -1681,11 +1836,8 @@ main.Active = true
 main.Draggable = true
 main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
-
 local bg = Instance.new("ImageLabel")
-bg.Name = "Bg"
 bg.Size = UDim2.new(1, 0, 1, 0)
-bg.Position = UDim2.new(0, 0, 0, 0)
 bg.BackgroundTransparency = 1
 bg.Image = "rbxassetid://137420246811640"
 bg.ImageTransparency = 0.35
@@ -1693,7 +1845,6 @@ bg.ScaleType = Enum.ScaleType.Crop
 bg.ZIndex = 0
 bg.Parent = main
 Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 12)
-
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 28)
 title.Text = "فليك + نظر + أسيست"
@@ -1703,7 +1854,6 @@ title.TextScaled = true
 title.Font = Enum.Font.GothamBold
 title.ZIndex = 2
 title.Parent = main
-
 local function makeToggle(text, yPos, callback)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0.9, 0, 0, 34)
@@ -1726,27 +1876,17 @@ local function makeToggle(text, yPos, callback)
 		callback(on)
 	end)
 end
-
 makeToggle("فليك تلبورت", 32, function(v) wallJumpOn = v end)
 makeToggle("أحسد العدو", 70, function(v) lookOn = v end)
 makeToggle("اسيست", 108, function(v) assistOn = v end)
-
-openBtn.MouseButton1Click:Connect(function()
-	main.Visible = not main.Visible
-end)
-
+openBtn.MouseButton1Click:Connect(function() main.Visible = not main.Visible end)
 RunService.RenderStepped:Connect(function()
-	if not lookOn then return end
-	if isFlicking then return end
-	local nearest = nil
-	local shortest = math.huge
+	if not lookOn or isFlicking then return end
+	local nearest, shortest = nil, math.huge
 	for _, other in pairs(Players:GetPlayers()) do
 		if other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
 			local dist = (other.Character.HumanoidRootPart.Position - root.Position).Magnitude
-			if dist < shortest then
-				shortest = dist
-				nearest = other.Character
-			end
+			if dist < shortest then shortest, nearest = dist, other.Character end
 		end
 	end
 	if nearest then
@@ -1754,77 +1894,52 @@ RunService.RenderStepped:Connect(function()
 		root.CFrame = CFrame.lookAt(root.Position, Vector3.new(tp.X, root.Position.Y, tp.Z))
 	end
 end)
-
 local currentTarget = nil
-
 local function getNearestPlayer()
 	local character = player.Character
-	if not character or not character:FindFirstChild("HumanoidRootPart") then
-		return nil
-	end
+	if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
 	local rootPart = character.HumanoidRootPart
-	local nearest = nil
-	local closestDist = math.huge
+	local nearest, closestDist = nil, math.huge
 	for _, otherPlayer in ipairs(Players:GetPlayers()) do
 		if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
 			local otherHumanoid = otherPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if otherHumanoid and otherHumanoid.Health > 0 then
 				local dist = (rootPart.Position - otherPlayer.Character.HumanoidRootPart.Position).Magnitude
-				if dist < closestDist then
-					closestDist = dist
-					nearest = otherPlayer
-				end
+				if dist < closestDist then closestDist, nearest = dist, otherPlayer end
 			end
 		end
 	end
 	return nearest
 end
-
 local function hasToolEquipped()
 	local character = player.Character
 	local backpack = player:FindFirstChildOfClass("Backpack")
-	if character and character:FindFirstChildOfClass("Tool") then
-		return true
-	end
-	if backpack and backpack:FindFirstChildOfClass("Tool") then
-		return true
-	end
+	if character and character:FindFirstChildOfClass("Tool") then return true end
+	if backpack and backpack:FindFirstChildOfClass("Tool") then return true end
 	return false
 end
-
 RunService.Heartbeat:Connect(function()
-	if not assistOn then return end
-	if not hasToolEquipped() then return end
+	if not assistOn or not hasToolEquipped() then return end
 	local character = player.Character
 	if not character or not character:FindFirstChild("HumanoidRootPart") then return end
 	local humanoid2 = character:FindFirstChildOfClass("Humanoid")
 	local rootPart = character.HumanoidRootPart
 	if not humanoid2 then return end
 	if currentTarget and currentTarget.Parent and currentTarget.Parent:FindFirstChild("Humanoid") then
-		local targetHumanoid = currentTarget.Parent.Humanoid
-		if targetHumanoid.Health <= 0 or (rootPart.Position - currentTarget.Position).Magnitude > 50 then
+		if currentTarget.Parent.Humanoid.Health <= 0 or (rootPart.Position - currentTarget.Position).Magnitude > 50 then
 			currentTarget = nil
 		end
-	else
-		currentTarget = nil
-	end
+	else currentTarget = nil end
 	if not currentTarget then
-		local nearestPlayer = getNearestPlayer()
-		if nearestPlayer and nearestPlayer.Character then
-			currentTarget = nearestPlayer.Character:FindFirstChild("HumanoidRootPart")
-		end
+		local np = getNearestPlayer()
+		if np and np.Character then currentTarget = np.Character:FindFirstChild("HumanoidRootPart") end
 	end
 	if currentTarget then
 		humanoid2:MoveTo(currentTarget.Position)
-		local lookAt = Vector3.new(currentTarget.Position.X, rootPart.Position.Y, currentTarget.Position.Z)
-		rootPart.CFrame = CFrame.new(rootPart.Position, lookAt)
+		rootPart.CFrame = CFrame.new(rootPart.Position, Vector3.new(currentTarget.Position.X, rootPart.Position.Y, currentTarget.Position.Z))
 	end
 end)
-
-local lastWallJump = 0
-local flickDir = 1
-local savedLook = nil
-
+local lastWallJump, flickDir, savedLook = 0, 1, nil
 local function getWall()
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = {char}
@@ -1835,34 +1950,28 @@ local function getWall()
 	end
 	return false, nil
 end
-
 UserInputService.JumpRequest:Connect(function()
 	if not wallJumpOn then return end
 	if tick() - lastWallJump < 0.22 then return end
 	if humanoid.FloorMaterial == Enum.Material.Air then
-		local touching, normal = getWall()
+		local touching = getWall()
 		if touching then
 			lastWallJump = tick()
 			local vel = root.AssemblyLinearVelocity
 			root.AssemblyLinearVelocity = Vector3.new(vel.X, 55, vel.Z)
-
 			if not isFlicking then
 				isFlicking = true
 				savedLook = root.CFrame.LookVector
 				flickDir = -flickDir
-				local flickAngle = 120 * flickDir
-				root.CFrame = CFrame.lookAt(root.Position, root.Position + savedLook) * CFrame.Angles(0, math.rad(flickAngle), 0)
+				root.CFrame = CFrame.lookAt(root.Position, root.Position + savedLook) * CFrame.Angles(0, math.rad(120 * flickDir), 0)
 				task.delay(0.08, function()
-					if savedLook then
-						root.CFrame = CFrame.lookAt(root.Position, root.Position + savedLook)
-					end
+					if savedLook then root.CFrame = CFrame.lookAt(root.Position, root.Position + savedLook) end
 					isFlicking = false
 				end)
 			end
 		end
 	end
 end)
-
 player.CharacterAdded:Connect(function(newChar)
 	char = newChar
 	root = newChar:WaitForChild("HumanoidRootPart")
@@ -2373,73 +2482,122 @@ do
 			if pInfo.Visible then refresh() end
 		end
 	end)
-	note(pInfo, "LUXURY FULL • Mohamed CRA features inside Luxury UI")
+	note(pInfo, "DAZ x 0 • Assist Tracker + Luxury features")
 end
 
 -- ===================== أنيميشن فتح / إغلاق =====================
+local isOpening = false
+
 local function dazShine()
 	for i, l in ipairs(dazLetters) do
 		task.spawn(function()
-			task.wait((i-1)*0.08)
-			TweenService:Create(l, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextSize = 44, Position = UDim2.fromOffset((i-1)*36 - 2, -3)}):Play()
+			task.wait((i - 1) * 0.08)
+			TweenService:Create(l, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TextSize = 32, Position = UDim2.fromOffset((i == 4 and 80 or i == 5 and 102 or (i - 1) * 26) - 2, -2)
+			}):Play()
 			task.wait(0.18)
-			TweenService:Create(l, TweenInfo.new(0.3, Enum.EasingStyle.Back), {TextSize = 38, Position = UDim2.fromOffset((i-1)*36, 0)}):Play()
+			local baseX = (i == 4 and 80) or (i == 5 and 102) or ((i - 1) * 26)
+			TweenService:Create(l, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+				TextSize = 28, Position = UDim2.fromOffset(baseX, 0)
+			}):Play()
 		end)
 	end
 end
 
-local function openAnim()
-	if main.Visible then return end
+local function openWithEffect()
+	if isOpening or main.Visible then return end
+	isOpening = true
 	openSnd()
+	miniFloat.Visible = false
 	main.Visible = true
-	main.Size = UDim2.fromOffset(60, 60)
+	main.Size = UDim2.fromOffset(50, 50)
 	main.Rotation = -8
 	main.BackgroundTransparency = 1
 	bgImage.ImageTransparency = 1
 	shade.BackgroundTransparency = 1
 	local t = TweenService:Create(main, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Size = UDim2.fromOffset(540, 380), Rotation = 0, BackgroundTransparency = 0.15
+		Size = UDim2.fromOffset(MAIN_W, MAIN_H), Rotation = 0, BackgroundTransparency = 0.15
 	})
 	t:Play()
 	TweenService:Create(bgImage, TweenInfo.new(0.55), {ImageTransparency = 0.78}):Play()
 	TweenService:Create(shade, TweenInfo.new(0.55), {BackgroundTransparency = 0.55}):Play()
-	TweenService:Create(blur, TweenInfo.new(0.45), {Size = 8}):Play()
 	t.Completed:Wait()
 	dazShine()
-	openBtn.Visible = false
+	isOpening = false
 end
 
-local function closeAnim()
-	clickSnd()
-	TweenService:Create(main, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-		Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1
+local function openMainFirstTime()
+	welcome.Visible = false
+	openWithEffect()
+end
+
+-- ترحيب
+task.spawn(function()
+	TweenService:Create(avatar, TweenInfo.new(1, Enum.EasingStyle.Back), {
+		Rotation = 360, Position = UDim2.new(0.5, -75, 0.22, 0)
 	}):Play()
-	TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
-	task.wait(0.32)
-	main.Visible = false
-	openBtn.Visible = true
-end
-
-local function minimizeAnim()
-	clickSnd()
-	TweenService:Create(main, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-		Size = UDim2.fromOffset(80, 80), BackgroundTransparency = 1
+	task.wait(0.2)
+	TweenService:Create(nameLabel, TweenInfo.new(0.8, Enum.EasingStyle.Back), {
+		Position = UDim2.new(0.5, -200, 0.52, 0)
 	}):Play()
-	task.wait(0.3)
-	main.Visible = false
-	openBtn.Visible = true
-end
-
-openBtn.MouseButton1Click:Connect(function()
-	clickSnd()
-	if main.Visible then closeAnim() else openAnim() end
+	task.wait(0.8)
+	TweenService:Create(hello, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+	for i = 1, 100 do
+		if not welcome.Visible then break end
+		loadFill.Size = UDim2.new(i / 100, 0, 1, 0)
+		percent.Text = tostring(i) .. "%"
+		task.wait(0.04)
+	end
+	if welcome.Visible then openMainFirstTime() end
 end)
+
+skipBtn.MouseButton1Click:Connect(function()
+	clickSnd()
+	openMainFirstTime()
+end)
+
 dazBtn.MouseButton1Click:Connect(function()
 	clickSnd()
 	dazShine()
+	if main.Visible then
+		TweenService:Create(main, TweenInfo.new(0.15), {Size = UDim2.fromOffset(MAIN_W - 16, MAIN_H - 12)}):Play()
+		task.wait(0.15)
+		TweenService:Create(main, TweenInfo.new(0.35, Enum.EasingStyle.Back), {Size = UDim2.fromOffset(MAIN_W, MAIN_H)}):Play()
+	else
+		openWithEffect()
+	end
 end)
-closeBtn.MouseButton1Click:Connect(closeAnim)
-miniBtn.MouseButton1Click:Connect(minimizeAnim)
+
+miniFloat.MouseButton1Click:Connect(function()
+	clickSnd()
+	openWithEffect()
+end)
+
+miniBtn.MouseButton1Click:Connect(function()
+	clickSnd()
+	if not main.Visible then return end
+	TweenService:Create(main, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+		Size = UDim2.fromOffset(70, 70), BackgroundTransparency = 1
+	}):Play()
+	task.wait(0.3)
+	main.Visible = false
+	miniFloat.Visible = true
+	miniFloat.Size = UDim2.fromOffset(50, 28)
+	miniFloat.Rotation = -8
+	TweenService:Create(miniFloat, TweenInfo.new(0.4, Enum.EasingStyle.Back), {
+		Size = UDim2.fromOffset(70, 36), Rotation = 0
+	}):Play()
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+	clickSnd()
+	TweenService:Create(main, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1
+	}):Play()
+	task.wait(0.3)
+	main.Visible = false
+	miniFloat.Visible = true
+end)
 
 -- تطبيق السكن بعد الـ respawn
 lp.CharacterAdded:Connect(function()
@@ -2450,5 +2608,4 @@ lp.CharacterAdded:Connect(function()
 end)
 
 showTab("main")
-openAnim()
-print("[LUXURY FULL] Loaded — DAZ UI + Assist Tracker")
+print("[DAZ x 0] Loaded")

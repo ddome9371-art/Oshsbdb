@@ -1,0 +1,2410 @@
+--[[
+	LUXURY FULL - كل مميزات Mohamed CRA v6 داخل واجهة Luxury
+	بدون تخريب المنطق الأصلي
+]]
+
+pcall(function()
+	for _,v in pairs(game.CoreGui:GetChildren()) do
+		if v.Name:find("Luxury") or v.Name:find("Mohamed") then v:Destroy() end
+	end
+end)
+pcall(function()
+	for _,v in pairs(game.Players.LocalPlayer.PlayerGui:GetChildren()) do
+		if v.Name:find("Luxury") or v.Name:find("Mohamed") then v:Destroy() end
+	end
+end)
+task.wait(0.25)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local InsertService = game:GetService("InsertService")
+local SoundService = game:GetService("SoundService")
+local Lighting = game:GetService("Lighting")
+local Stats = game:GetService("Stats")
+local PathfindingService = game:GetService("PathfindingService")
+
+local lp = Players.LocalPlayer
+local PlayerGui = lp:WaitForChild("PlayerGui")
+
+-- ===================== إعدادات عامة =====================
+local WIDGET_SCALE = 0.9
+local ASSIST_MAX_RANGE = 60
+local ASSIST_STOP_DIST = 2.3
+local HEADLESS = true
+local KORBLOX = true
+local KORBLOX_ID = 139607718
+local HEADLESS_ASSET = 134082579
+local HIDE_LEG = "Right"
+local FREEZE_SKINS = true
+local SKINS_FILE = "Luxury_skins.json"
+local SONGS_FILE = "Luxury_songs.json"
+local LANG = "ar"
+
+local function T(ar, en)
+	return LANG == "ar" and ar or en
+end
+
+-- ===================== متغيرات السكن =====================
+local frozen = {}
+local currentSkin = 1
+local skinActive = true
+local skinGuis = {}
+local fakeLegParts = {}
+local saved = nil
+local hideConn = nil
+local origDesc = nil
+local uidCache = {}
+local modelCache = {}
+local dummyCache = {}
+local applying = false
+local lastSkinChar = nil
+local forceApply = false
+local conns = {}
+local closed = false
+
+if FREEZE_SKINS then
+	pcall(function()
+		if isfile and isfile(SKINS_FILE) then
+			frozen = HttpService:JSONDecode(readfile(SKINS_FILE))
+		end
+	end)
+end
+
+local function saveFrozen()
+	pcall(function()
+		if writefile then
+			writefile(SKINS_FILE, HttpService:JSONEncode(frozen))
+		end
+	end)
+end
+
+-- ===================== دوال مساعدة عامة =====================
+local function new(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props or {}) do o[k] = v end
+	if parent then o.Parent = parent end
+	return o
+end
+
+local function corner(o, r)
+	return new("UICorner", {CornerRadius = UDim.new(0, r or 8)}, o)
+end
+
+local function stroke(o, col, th, tr)
+	return new("UIStroke", {Color = col or Color3.fromHex("#8A2BE2"), Thickness = th or 1, Transparency = tr or 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, o)
+end
+
+local function getChar(p)
+	local c = p and p.Character
+	if not c then return nil end
+	local h = c:FindFirstChildOfClass("Humanoid")
+	local r = c:FindFirstChild("HumanoidRootPart")
+	if h and r and h.Health > 0 then return c, h, r end
+	return nil
+end
+
+local function userIdOf(name)
+	if uidCache[name] then return uidCache[name] end
+	local ok, uid = pcall(function() return Players:GetUserIdFromNameAsync(name) end)
+	if ok and uid then uidCache[name] = uid return uid end
+	return nil
+end
+
+local function resolveUserId(name)
+	name = (string.gsub(tostring(name or ""), "^%s*@?%s*(.-)%s*$", "%1"))
+	if name == "" then return nil end
+	if uidCache[name] then return uidCache[name] end
+	if string.match(name, "^%d+$") and #name >= 6 then
+		local n = tonumber(name)
+		uidCache[name] = n
+		return n
+	end
+	for _ = 1, 3 do
+		local ok, uid = pcall(function() return Players:GetUserIdFromNameAsync(name) end)
+		if ok and uid then uidCache[name] = uid return uid end
+		task.wait(0.3)
+	end
+	return nil
+end
+
+local function isTeammate(p)
+	local myTeam = lp.Team
+	if myTeam and p.Team == myTeam then return true end
+	if lp.Neutral == false and p.Neutral == false and p.TeamColor == lp.TeamColor then return true end
+	return false
+end
+
+-- ===================== نظام السكن الكامل =====================
+local DESC_PROPS = {"Shirt","Pants","GraphicTShirt","Face","Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg","HeightScale","WidthScale","HeadScale","DepthScale","BodyTypeScale","ProportionScale"}
+local COLOR_PROPS = {"HeadColor","TorsoColor","LeftArmColor","RightArmColor","LeftLegColor","RightLegColor"}
+
+local function freezeDesc(d)
+	local r = {p = {}, c = {}, a = {}}
+	for _, k in ipairs(DESC_PROPS) do pcall(function() r.p[k] = d[k] end) end
+	for _, k in ipairs(COLOR_PROPS) do
+		pcall(function()
+			local c = d[k]
+			r.c[k] = {c.R, c.G, c.B}
+		end)
+	end
+	local ok, list = pcall(function() return d:GetAccessories(true) end)
+	if ok and list then
+		for _, i in ipairs(list) do
+			table.insert(r.a, {AssetId = i.AssetId, Type = i.AccessoryType.Name, Layered = i.IsLayered, Order = i.Order, Puffiness = i.Puffiness})
+		end
+	end
+	return r
+end
+
+local function thawDesc(r)
+	local d = Instance.new("HumanoidDescription")
+	for k, v in pairs(r.p or {}) do pcall(function() d[k] = v end) end
+	for k, v in pairs(r.c or {}) do pcall(function() d[k] = Color3.new(v[1], v[2], v[3]) end) end
+	local list = {}
+	for _, i in ipairs(r.a or {}) do
+		table.insert(list, {AssetId = i.AssetId, AccessoryType = Enum.AccessoryType[i.Type], IsLayered = i.Layered, Order = i.Order, Puffiness = i.Puffiness})
+	end
+	pcall(function() d:SetAccessories(list, true) end)
+	return d
+end
+
+local function getDesc(name, uid)
+	if FREEZE_SKINS and frozen[name] then return thawDesc(frozen[name]) end
+	local d = Players:GetHumanoidDescriptionFromUserId(uid)
+	if FREEZE_SKINS then
+		frozen[name] = freezeDesc(d)
+		saveFrozen()
+	end
+	return d
+end
+
+local function loadAssetObj(id)
+	local obj = nil
+	local ok, objs = pcall(function() return game:GetObjects("rbxassetid://" .. tostring(id)) end)
+	if ok and objs and objs[1] then obj = objs[1] end
+	if not obj then
+		local ok2, model = pcall(function() return InsertService:LoadAsset(id) end)
+		if ok2 and model then
+			local kids = model:GetChildren()
+			if kids[1] then obj = kids[1] end
+		end
+	end
+	return obj
+end
+
+local function snapshotAndStrip(char)
+	saved = {removed = {}, colors = nil, face = nil, transp = {}}
+	for _, d in ipairs(char:GetChildren()) do
+		if d:IsA("Accessory") or d:IsA("Shirt") or d:IsA("Pants") or d:IsA("ShirtGraphic") then
+			table.insert(saved.removed, d)
+			d.Parent = nil
+		end
+	end
+	local bc = char:FindFirstChildOfClass("BodyColors")
+	if bc then saved.colors = bc:Clone() end
+	local head = char:FindFirstChild("Head")
+	local face = head and head:FindFirstChildOfClass("Decal")
+	if face then saved.face = face.Texture end
+end
+
+local function restoreVisual(char)
+	if hideConn then hideConn:Disconnect() hideConn = nil end
+	for _, fp in ipairs(fakeLegParts) do pcall(function() fp:Destroy() end) end
+	fakeLegParts = {}
+	if origDesc then
+		local c = lp.Character
+		local hm = c and c:FindFirstChildOfClass("Humanoid")
+		if hm then pcall(function() hm:ApplyDescription(origDesc) end) end
+		origDesc = nil
+	end
+	for _, g in ipairs(skinGuis) do pcall(function() g:Destroy() end) end
+	skinGuis = {}
+	if not saved then return end
+	char = char or lp.Character
+	if char then
+		for _, d in ipairs(saved.removed) do pcall(function() d.Parent = char end) end
+		local bc = char:FindFirstChildOfClass("BodyColors")
+		if bc and saved.colors then
+			for _, prop in ipairs({"HeadColor3","TorsoColor3","LeftArmColor3","RightArmColor3","LeftLegColor3","RightLegColor3"}) do
+				local orig = saved.colors[prop]
+				bc[prop] = Color3.new(1,0,1)
+				bc[prop] = orig
+			end
+		end
+		local head = char:FindFirstChild("Head")
+		local face = head and head:FindFirstChildOfClass("Decal")
+		if face and saved.face then face.Texture = saved.face end
+	end
+	if saved.transp then
+		for inst, val in pairs(saved.transp) do
+			pcall(function() inst.Transparency = val end)
+		end
+	end
+	saved = nil
+end
+
+local function isWelded(handle)
+	for _, d in ipairs(handle:GetChildren()) do
+		if d:IsA("Weld") or d:IsA("WeldConstraint") or d:IsA("Motor6D") then return true end
+	end
+	return false
+end
+
+local function attachAccessory(char, h, acc)
+	pcall(function() h:AddAccessory(acc) end)
+	if acc.Parent ~= char then acc.Parent = char end
+	local handle = acc:FindFirstChild("Handle")
+	if not handle or not handle:IsA("BasePart") then return false end
+	if isWelded(handle) then return true end
+	handle.CanCollide = false
+	handle.Massless = true
+	local att = handle:FindFirstChildOfClass("Attachment")
+	local target = nil
+	if att then
+		for _, part in ipairs(char:GetChildren()) do
+			if part:IsA("BasePart") then
+				local a = part:FindFirstChild(att.Name)
+				if a and a:IsA("Attachment") then target = a break end
+			end
+		end
+	end
+	local head = char:FindFirstChild("Head")
+	if target then
+		handle.CFrame = target.WorldCFrame * att.CFrame:Inverse()
+		local w = Instance.new("Weld")
+		w.Part0 = target.Parent
+		w.Part1 = handle
+		w.C0 = target.CFrame
+		w.C1 = att.CFrame
+		w.Parent = handle
+		return true
+	elseif head then
+		handle.CFrame = head.CFrame * CFrame.new(0, head.Size.Y / 2, 0)
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = head
+		w.Part1 = handle
+		w.Parent = handle
+		return true
+	end
+	return false
+end
+
+local function buildFakeLeg(char)
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	local darkTeal = Color3.fromRGB(8, 100, 100)
+	local teal = Color3.fromRGB(40, 190, 190)
+	local function add(inst, off, size, col)
+		inst.Size = size
+		inst.Color = col
+		inst.Material = Enum.Material.SmoothPlastic
+		inst.CanCollide = false
+		inst.CanTouch = false
+		inst.CanQuery = false
+		inst.Massless = true
+		inst.Anchored = false
+		inst.CFrame = hrp.CFrame * off
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = hrp
+		w.Part1 = inst
+		w.Parent = inst
+		inst.Parent = char
+		table.insert(fakeLegParts, inst)
+	end
+	local LEG_X, LEG_TOP = 0.5, -1.0
+	local LEG_W = 0.14
+	local LEG_TOP_LEN, LEG_TIP_LEN = 0.4, 0.6
+	local zHalf = 0.1
+	add(Instance.new("Part"), CFrame.new(LEG_X, LEG_TOP - LEG_TOP_LEN / 2, 0), Vector3.new(LEG_W, LEG_TOP_LEN, zHalf * 2), darkTeal)
+	local y2 = LEG_TOP - LEG_TOP_LEN - LEG_TIP_LEN / 2
+	add(Instance.new("WedgePart"), CFrame.new(LEG_X, y2, -zHalf / 2) * CFrame.Angles(0, 0, math.pi), Vector3.new(LEG_W, LEG_TIP_LEN, zHalf), teal)
+	add(Instance.new("WedgePart"), CFrame.new(LEG_X, y2, zHalf / 2) * CFrame.Angles(0, math.pi, math.pi), Vector3.new(LEG_W, LEG_TIP_LEN, zHalf), teal)
+end
+
+local function buildUserLeg(char, desc, key)
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not (hum and desc) then return false end
+	local cacheKey = key and (key .. tostring(hum.RigType))
+	local okM, dummy = true, nil
+	if cacheKey and dummyCache[cacheKey] then
+		dummy = dummyCache[cacheKey]:Clone()
+	else
+		okM, dummy = pcall(function() return Players:CreateHumanoidModelFromDescription(desc, hum.RigType) end)
+		if okM and dummy and cacheKey then dummyCache[cacheKey] = dummy:Clone() end
+	end
+	if not (okM and dummy) then return false end
+	if hum.RigType == Enum.HumanoidRigType.R6 then
+		for _, d in ipairs(dummy:GetChildren()) do
+			if d:IsA("CharacterMesh") and d.BodyPart == Enum.BodyPart.RightLeg then
+				local cm = d:Clone()
+				cm.Parent = char
+				table.insert(fakeLegParts, cm)
+			end
+		end
+		pcall(function() dummy:Destroy() end)
+		return true, true
+	end
+	local names = {"RightUpperLeg", "RightLowerLeg", "RightFoot"}
+	local made = 0
+	for _, n in ipairs(names) do
+		local src, dst = dummy:FindFirstChild(n), char:FindFirstChild(n)
+		if src and dst then
+			local c = src:Clone()
+			for _, d in ipairs(c:GetChildren()) do
+				if d:IsA("Motor6D") or d:IsA("Weld") or d:IsA("WeldConstraint") then d:Destroy() end
+			end
+			c.Name = "KX_" .. n
+			c.Anchored = false
+			c.CanCollide = false
+			c.CanTouch = false
+			c.CanQuery = false
+			c.Massless = true
+			c.Transparency = 0
+			c.CFrame = dst.CFrame
+			local w = Instance.new("WeldConstraint")
+			w.Part0 = dst
+			w.Part1 = c
+			w.Parent = c
+			c.Parent = char
+			table.insert(fakeLegParts, c)
+			made = made + 1
+		end
+	end
+	pcall(function() dummy:Destroy() end)
+	return made > 0
+end
+
+local function copyBodyParts(char, h, model, opts)
+	opts = opts or {}
+	saved = saved or {}
+	saved.transp = saved.transp or {}
+	local hideList = {}
+	local function hideOrig(p)
+		saved.transp[p] = saved.transp[p] or p.Transparency
+		table.insert(hideList, p)
+		for _, d in ipairs(p:GetChildren()) do
+			if d:IsA("Decal") then
+				saved.transp[d] = saved.transp[d] or d.Transparency
+				table.insert(hideList, d)
+			end
+		end
+	end
+	if h.RigType == Enum.HumanoidRigType.R6 then
+		for _, d in ipairs(model:GetChildren()) do
+			if d:IsA("CharacterMesh") then
+				local cm = d:Clone()
+				cm.Parent = char
+				table.insert(fakeLegParts, cm)
+			end
+		end
+	end
+	for _, src in ipairs(model:GetChildren()) do
+		local dst = char:FindFirstChild(src.Name)
+		local diffMesh = dst and src:IsA("MeshPart") and dst:IsA("MeshPart") and src.MeshId ~= dst.MeshId
+		if dst and src ~= dst and diffMesh and src.Name ~= "HumanoidRootPart" then
+			local c = src:Clone()
+			for _, d in ipairs(c:GetChildren()) do
+				if d:IsA("Motor6D") or d:IsA("Weld") or d:IsA("WeldConstraint") then d:Destroy() end
+			end
+			c.Name = "KX_" .. src.Name
+			c.Anchored = false
+			c.CanCollide = false
+			c.CanTouch = false
+			c.CanQuery = false
+			c.Massless = true
+			c.Transparency = 0
+			c.CFrame = dst.CFrame
+			local w = Instance.new("WeldConstraint")
+			w.Part0 = dst
+			w.Part1 = c
+			w.Parent = c
+			c.Parent = char
+			table.insert(fakeLegParts, c)
+			hideOrig(dst)
+		end
+	end
+	local hd = char:FindFirstChild("Head")
+	local mh = model:FindFirstChild("Head")
+	if hd and mh and not opts.headless then
+		local om, nm = hd:FindFirstChildOfClass("SpecialMesh"), mh:FindFirstChildOfClass("SpecialMesh")
+		if om and nm then
+			pcall(function()
+				om.MeshType = nm.MeshType
+				om.MeshId = nm.MeshId
+				om.TextureId = nm.TextureId
+				om.Scale = nm.Scale
+				om.Offset = nm.Offset
+			end)
+		end
+		for _, d in ipairs(hd:GetChildren()) do
+			if d:IsA("Decal") and d.Name ~= "KX_face" then
+				saved.transp[d] = saved.transp[d] or d.Transparency
+				table.insert(hideList, d)
+			end
+		end
+		if not opts.noFace then
+			for _, d in ipairs(mh:GetChildren()) do
+				if d:IsA("Decal") then
+					local c = d:Clone()
+					c.Name = "KX_face"
+					c.Transparency = 0
+					c.Parent = hd
+					table.insert(fakeLegParts, c)
+				end
+			end
+		end
+	elseif hd and opts.headless then
+		for _, d in ipairs(hd:GetChildren()) do
+			if d:IsA("Decal") then
+				saved.transp[d] = saved.transp[d] or d.Transparency
+				table.insert(hideList, d)
+			end
+		end
+	end
+	if opts.headless then
+		for _, pt in ipairs({hd}) do
+			if pt then
+				saved.transp[pt] = saved.transp[pt] or pt.Transparency
+				table.insert(hideList, pt)
+			end
+		end
+	end
+	if #hideList > 0 then
+		if hideConn then hideConn:Disconnect() end
+		hideConn = RunService.RenderStepped:Connect(function()
+			for _, p in ipairs(hideList) do
+				if p.Parent then p.Transparency = 1 end
+			end
+		end)
+	end
+end
+
+local function copyFromModel(char, h, model, opts)
+	snapshotAndStrip(char)
+	local count = 0
+	for _, d in ipairs(model:GetChildren()) do
+		if d:IsA("Accessory") then
+			local acc = d:Clone()
+			local handle = acc:FindFirstChild("Handle")
+			if handle then
+				for _, w in ipairs(handle:GetChildren()) do
+					if w:IsA("Weld") or w:IsA("WeldConstraint") or w:IsA("Motor6D") then w:Destroy() end
+				end
+			end
+			attachAccessory(char, h, acc)
+			table.insert(skinGuis, acc)
+			count = count + 1
+		elseif d:IsA("Shirt") or d:IsA("Pants") or d:IsA("ShirtGraphic") then
+			local o = d:Clone()
+			o.Parent = char
+			table.insert(skinGuis, o)
+			count = count + 1
+		end
+	end
+	local mbc, bc = model:FindFirstChildOfClass("BodyColors"), char:FindFirstChildOfClass("BodyColors")
+	if mbc and bc then
+		for _, prop in ipairs({"HeadColor3","TorsoColor3","LeftArmColor3","RightArmColor3","LeftLegColor3","RightLegColor3"}) do
+			pcall(function() bc[prop] = mbc[prop] end)
+		end
+	end
+	pcall(copyBodyParts, char, h, model, opts)
+	return count
+end
+
+local function applyUserSkin(username, opts)
+	opts = opts or {}
+	local c0, h0 = getChar(lp)
+	if not c0 then return false, T("الشخصية مو جاهزة", "Character not ready") end
+	local desc, uid = nil, nil
+	uid = resolveUserId(username)
+	if not uid then return false, T("اليوزر ما انجاب", "Username not found") end
+	for _ = 1, 3 do
+		local ok, d = pcall(getDesc, username, uid)
+		if ok and d then desc = d break end
+		task.wait(0.35)
+	end
+	if desc and opts.forceKorblox then
+		pcall(function() desc.RightLeg = KORBLOX_ID end)
+	end
+	local sources = {
+		function()
+			if not desc then return nil end
+			local mkey = username .. tostring(h0.RigType)
+			if modelCache[mkey] then return modelCache[mkey]:Clone() end
+			local ok, model = pcall(function() return Players:CreateHumanoidModelFromDescription(desc, h0.RigType) end)
+			if ok and model then
+				modelCache[mkey] = model:Clone()
+				return model
+			end
+			return nil
+		end,
+		function()
+			if not uid then return nil end
+			local ok, m = pcall(function() return Players:GetCharacterAppearanceAsync(uid) end)
+			if ok and m then return m end
+			return nil
+		end,
+	}
+	for _, src in ipairs(sources) do
+		local okS, model = pcall(src)
+		if okS and model then
+			restoreVisual(c0)
+			local c, h = getChar(lp)
+			if not c then
+				pcall(function() model:Destroy() end)
+				return false, T("الشخصية مو جاهزة", "Character not ready")
+			end
+			local okC, count = pcall(copyFromModel, c, h, model, opts)
+			pcall(function() model:Destroy() end)
+			if okC and ((count or 0) > 0) then
+				return true
+			end
+			restoreVisual(c)
+		end
+	end
+	if desc then
+		local c, h = getChar(lp)
+		if c then
+			restoreVisual(c)
+			local okO, cur = pcall(function() return h:GetAppliedDescription() end)
+			if okO and cur then origDesc = cur end
+			local okA = pcall(function() h:ApplyDescription(desc) end)
+			if okA then
+				for _, ch in ipairs(c:GetChildren()) do
+					if ch:IsA("Accessory") or ch:IsA("Shirt") or ch:IsA("Pants") or ch:IsA("ShirtGraphic") then
+						table.insert(skinGuis, ch)
+					end
+				end
+				return true
+			end
+			origDesc = nil
+		end
+	end
+	return false, T("ما قدرت أجيب سكن هذا اليوزر", "Couldn't fetch this user's skin")
+end
+
+local function restoreSkin()
+	skinActive = false
+	restoreVisual()
+end
+
+local SKINS = {
+	{label = "FF_071", username = "FF_071", exact = true},
+	{label = "TLLWP", username = "TLLWP", exact = true},
+	{label = "ASOOXLI", username = "ASOOXLI", exact = true},
+	{label = "UB1ER", username = "UB1ER", exact = true},
+	{label = "ZXCFFWX", username = "ZXCFFWX", exact = true},
+	{label = "xk8sq", username = "xk8sq", exact = true},
+	{label = "44j", username = "44j"},
+	{label = "Soulcrxck", username = "Soulcrxck", exact = true},
+	{label = "H_XRU", username = "H_XRU", exact = true},
+	{label = "silentcrimer", username = "silentcrimer", exact = true},
+	{label = "Linkmon99", username = "Linkmon99", exact = true},
+	{label = "Stickmasterluke", username = "Stickmasterluke", exact = true},
+	{label = "Builderman", username = "Builderman", forceKorblox = true},
+	{label = "Shedletsky", username = "Shedletsky", forceKorblox = true},
+	{label = "Telamon", username = "Telamon", forceKorblox = true},
+	{label = "Quenty", username = "Quenty", forceKorblox = true},
+}
+
+local function applyCurrent()
+	local sk = SKINS[currentSkin]
+	if not sk then return false end
+	if sk.exact then
+		HEADLESS = false
+		KORBLOX = false
+	else
+		HEADLESS = true
+		KORBLOX = true
+	end
+	if sk.username then
+		local ok = applyUserSkin(sk.username, sk)
+		return ok
+	end
+	return false
+end
+
+local function doApply()
+	if applying or closed then return false end
+	applying = true
+	local ok, res = pcall(applyCurrent)
+	applying = false
+	return ok and res
+end
+
+local function selectSkin(i)
+	currentSkin = i
+	skinActive = true
+	forceApply = true
+	task.spawn(doApply)
+end
+
+-- ===================== نظام الأسيست (MohamedAssist) =====================
+local MohamedAssist = (function()
+	local autoActive = false
+	local autoGrab = false
+	local autoJumpOn = false
+	local antiStickOn = false
+	local grabDelay = 10
+	local wallDist = 4
+	local ASSIST_MAX_RANGE = 60
+	local ASSIST_STOP_DIST = 2.3
+	local GRAB_RANGE = 14
+	local GRAB_COOLDOWN = 0.2
+	local lastGrab = 0
+	local holding = false
+	local hadTool = false
+	local pauseUntil = 0
+	local TAKE_PAUSE = 0
+	local LEAD_MAX = 0.35
+
+	local AX = {
+		driveUp = false, lastDir = Vector3.zero,
+		stuck = {pos = nil, t = 0}, lastJump = 0,
+		pathState = {wps = nil, idx = 2, last = 0, busy = false}
+	}
+	local driveTarget, driveUntil = nil, 0
+	local driveDir = Vector3.zero
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+	local function setDrive(pos, wantUp)
+		driveTarget = pos
+		driveUntil = os.clock() + 0.2
+		AX.driveUp = wantUp and true or false
+	end
+
+	local function manualHeld()
+		if UserInputService:GetFocusedTextBox() then return false end
+		for _, k in ipairs({Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.Up, Enum.KeyCode.Down, Enum.KeyCode.Left, Enum.KeyCode.Right}) do
+			if UserInputService:IsKeyDown(k) then return true end
+		end
+		return false
+	end
+
+	local function pickTarget(rootPart, preferBomb, range)
+		local best, bestD = nil, range or ASSIST_MAX_RANGE
+		local bomb, bombD = nil, range or ASSIST_MAX_RANGE
+		for _, p in ipairs(Players:GetPlayers()) do
+			local ch = p.Character
+			local r = ch and ch:FindFirstChild("HumanoidRootPart")
+			local h = ch and ch:FindFirstChildOfClass("Humanoid")
+			if p ~= lp and not isTeammate(p) and r and h and h.Health > 0 then
+				local d = (rootPart.Position - r.Position).Magnitude
+				if d < bestD then best, bestD = r, d end
+				if preferBomb and d < bombD and ch:FindFirstChildOfClass("Tool") then
+					bomb, bombD = r, d
+				end
+			end
+		end
+		return bomb or best
+	end
+
+	local function tryGrab(targetChar, targetRoot, myChar, myRoot)
+		local now = os.clock()
+		if now - lastGrab < GRAB_COOLDOWN then return end
+		lastGrab = now
+		for _, item in ipairs(myChar:GetChildren()) do
+			if item:IsA("Tool") then pcall(function() item:Activate() end) end
+		end
+		if fireproximityprompt then
+			for _, d in ipairs(targetChar:GetDescendants()) do
+				if d:IsA("ProximityPrompt") and d.Enabled then
+					pcall(fireproximityprompt, d)
+				end
+			end
+		end
+		if firetouchinterest then
+			local parts = {targetRoot}
+			local bomb = targetChar:FindFirstChildOfClass("Tool")
+			local handle = bomb and bomb:FindFirstChild("Handle")
+			if handle then table.insert(parts, handle) end
+			for _, n in ipairs({"Torso", "UpperTorso", "Head", "Right Arm", "RightHand"}) do
+				local pt = targetChar:FindFirstChild(n)
+				if pt then table.insert(parts, pt) end
+			end
+			pcall(function()
+				for _, pt in ipairs(parts) do
+					firetouchinterest(myRoot, pt, 0)
+					firetouchinterest(myRoot, pt, 1)
+				end
+			end)
+		end
+	end
+
+	AX.jump = function(hum, root, push)
+		local now = os.clock()
+		if now - AX.lastJump < 0.25 then return end
+		AX.lastJump = now
+		hum.Jump = true
+		pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+		local power = hum.UseJumpPower and hum.JumpPower or math.sqrt(2 * workspace.Gravity * hum.JumpHeight)
+		if power < 30 then power = 50 end
+		local v = root.AssemblyLinearVelocity
+		if push then
+			root.AssemblyLinearVelocity = Vector3.new(push.X, power, push.Z)
+		else
+			root.AssemblyLinearVelocity = Vector3.new(v.X, power, v.Z)
+		end
+	end
+
+	AX.ray = function(origin, dir, len)
+		local h = workspace:Raycast(origin, dir * len, rayParams)
+		if h and h.Instance.CanCollide then
+			local m = h.Instance:FindFirstAncestorOfClass("Model")
+			if m and m:FindFirstChildOfClass("Humanoid") then return nil end
+			return h
+		end
+		return nil
+	end
+
+	AX.steer = function(root, dir, allowLadder, goalDist)
+		local origin = root.Position
+		local D = antiStickOn and (wallDist or 4) or 3.5
+		local h = AX.ray(origin, dir, D)
+		if not h then return dir end
+		local n = Vector3.new(h.Normal.X, 0, h.Normal.Z)
+		if n.Magnitude > 0.1 then
+			n = n.Unit
+			local slide = dir - n * dir:Dot(n)
+			if slide.Magnitude > 0.25 then
+				slide = slide.Unit
+				if not AX.ray(origin, slide, math.max(D - 0.5, 2)) then return slide end
+			end
+		end
+		for _, ang in ipairs({40, -40, 75, -75, 110, -110}) do
+			local d = CFrame.Angles(0, math.rad(ang), 0) * dir
+			if not AX.ray(origin, d, D) then return d end
+		end
+		return dir
+	end
+
+	RunService:BindToRenderStep("LuxuryAssistDrive", Enum.RenderPriority.Input.Value + 1, function()
+		driveDir = Vector3.zero
+		if not (autoActive or autoJumpOn) or manualHeld() or not driveTarget or os.clock() > driveUntil then return end
+		local char = lp.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if not hum or not root or hum.Health <= 0 then return end
+		local d = Vector3.new(driveTarget.X - root.Position.X, 0, driveTarget.Z - root.Position.Z)
+		local dyT = driveTarget.Y - root.Position.Y
+		local needUp = AX.driveUp and dyT > 2
+		if d.Magnitude > 1.2 then
+			local dir = d.Unit
+			if (antiStickOn or autoJumpOn) and AX.steer then
+				dir = AX.steer(root, dir, AX.driveUp, d.Magnitude)
+			end
+			driveDir = dir
+			AX.lastDir = dir
+			hum:Move(dir, false)
+		elseif needUp and AX.lastDir.Magnitude > 0.1 then
+			driveDir = AX.lastDir
+			hum:Move(AX.lastDir, false)
+		else
+			hum:Move(Vector3.zero, false)
+		end
+	end)
+
+	table.insert(conns, RunService.Heartbeat:Connect(function()
+		if closed then return end
+		if not autoActive and not autoGrab and not autoJumpOn then
+			holding = false
+			driveTarget = nil
+			return
+		end
+		local manual = manualHeld()
+		local character = lp.Character
+		if not character then return end
+		local hasTool = character:FindFirstChildOfClass("Tool") ~= nil
+		if hasTool and not hadTool then pauseUntil = os.clock() + TAKE_PAUSE end
+		hadTool = hasTool
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local rootPart = character:FindFirstChild("HumanoidRootPart")
+		if not humanoid or not rootPart or humanoid.Health <= 0 then return end
+		rayParams.FilterDescendantsInstances = {character}
+		local grabNow = autoGrab
+		local nearestTarget = pickTarget(rootPart, grabNow and not hasTool)
+		if not nearestTarget then
+			holding = false
+			driveTarget = nil
+			return
+		end
+		local tPos = nearestTarget.Position
+		local me = rootPart.Position
+		local flat = Vector3.new(tPos.X - me.X, 0, tPos.Z - me.Z)
+		local dist = flat.Magnitude
+		if grabNow and not hasTool and dist <= GRAB_RANGE then
+			local tChar = nearestTarget.Parent
+			if tChar then tryGrab(tChar, nearestTarget, character, rootPart) end
+		end
+		if not (autoActive or autoJumpOn) or manual then
+			holding = false
+			driveTarget = nil
+			return
+		end
+		if os.clock() < pauseUntil then
+			holding = false
+			driveTarget = nil
+			return
+		end
+		if not (hasTool or grabNow) then
+			holding = false
+			driveTarget = nil
+			return
+		end
+		if holding then
+			if dist > ASSIST_STOP_DIST + 0.7 then holding = false end
+		elseif dist <= ASSIST_STOP_DIST then
+			holding = true
+		end
+		if holding then
+			driveTarget = nil
+			return
+		end
+		local rv = nearestTarget.AssemblyLinearVelocity
+		local vel = Vector3.new(rv.X, 0, rv.Z)
+		if vel.Magnitude > 80 then vel = Vector3.zero end
+		local lead = math.clamp(dist / 20, 0, LEAD_MAX)
+		local offset = vel * lead
+		if offset.Magnitude > 6 then offset = offset.Unit * 6 end
+		setDrive(tPos + offset)
+	end))
+
+	return {
+		SetAssist = function(v) autoActive = v and true or false end,
+		SetGrab = function(v) autoGrab = v and true or false end,
+		SetJump = function(v) autoJumpOn = v and true or false end,
+		SetAntiStick = function(v) antiStickOn = v and true or false end,
+		SetWallDist = function(v) wallDist = math.clamp(tonumber(v) or 4, 1, 10) end,
+		SetGrabDelay = function(v) grabDelay = math.clamp(tonumber(v) or 10, 1, 10) end,
+		manualHeld = manualHeld,
+		pickTarget = pickTarget,
+		isGrab = function() return autoGrab end,
+		isAntiStick = function() return antiStickOn end,
+	}
+end)()
+
+-- ===================== نظام Kill FX =====================
+local KFX = {
+	current = 1,
+	prev = 1,
+	list = {
+		{id = "none", en = "None", ar = "بدون"},
+		{id = "redbomb", en = "Red Bomb", ar = "قنبلة حمراء"},
+		{id = "explode", en = "Explosion", ar = "انفجار"},
+		{id = "lightning", en = "Lightning", ar = "برق"},
+		{id = "fire", en = "Fire", ar = "نار"},
+		{id = "smoke", en = "Smoke", ar = "دخان"},
+		{id = "confetti", en = "Confetti", ar = "ورق ملون"},
+		{id = "blood", en = "Blood", ar = "دم"},
+	}
+}
+
+local function playKillFX(char)
+	if not char or KFX.current <= 1 then return end
+	local e = KFX.list[KFX.current]
+	if not e or e.id == "none" then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	pcall(function()
+		if e.id == "explode" or e.id == "redbomb" then
+			local p = Instance.new("Explosion")
+			p.Position = root.Position
+			p.BlastRadius = 0
+			p.BlastPressure = 0
+			p.Parent = workspace
+		elseif e.id == "fire" then
+			local f = Instance.new("Fire")
+			f.Size = 8
+			f.Heat = 10
+			f.Parent = root
+			task.delay(2, function() f:Destroy() end)
+		elseif e.id == "smoke" then
+			local s = Instance.new("Smoke")
+			s.Size = 6
+			s.Opacity = 0.6
+			s.Parent = root
+			task.delay(2.5, function() s:Destroy() end)
+		elseif e.id == "lightning" then
+			local a = Instance.new("Attachment", root)
+			local b = Instance.new("Attachment")
+			b.Position = Vector3.new(0, 15, 0)
+			b.Parent = root
+			local beam = Instance.new("Beam")
+			beam.Attachment0 = a
+			beam.Attachment1 = b
+			beam.Width0 = 0.4
+			beam.Width1 = 0.1
+			beam.Color = ColorSequence.new(Color3.fromRGB(180, 220, 255))
+			beam.Parent = root
+			task.delay(0.4, function() beam:Destroy() a:Destroy() b:Destroy() end)
+		end
+	end)
+end
+
+-- مراقبة الموت
+local function watchChar(char)
+	local hum = char:WaitForChild("Humanoid", 5)
+	if not hum then return end
+	local fired = false
+	local function died()
+		if fired then return end
+		fired = true
+		pcall(playKillFX, char)
+	end
+	table.insert(conns, hum.Died:Connect(died))
+	table.insert(conns, hum.HealthChanged:Connect(function(h)
+		if h <= 0 then died() end
+	end))
+end
+
+local function watchPlayer(p)
+	if p == lp then return end
+	if p.Character then task.spawn(watchChar, p.Character) end
+	table.insert(conns, p.CharacterAdded:Connect(watchChar))
+end
+
+for _, p in ipairs(Players:GetPlayers()) do watchPlayer(p) end
+table.insert(conns, Players.PlayerAdded:Connect(watchPlayer))
+
+-- ===================== نظام الأغاني =====================
+local songSound = Instance.new("Sound")
+songSound.Name = "LuxurySong"
+songSound.Volume = 0.6
+songSound.Looped = false
+songSound.Parent = SoundService
+local songs = {}
+local nowName = nil
+local repeatCount, repeatLeft = 1, 0
+local songCache = {}
+
+local function playSong(s)
+	task.spawn(function()
+		local ok = pcall(function()
+			local asset
+			if s.kind == "id" then
+				asset = "rbxassetid://" .. s.value
+			elseif s.kind == "url" then
+				local ext = string.find(string.lower(s.value), "%.ogg") and "ogg" or "mp3"
+				local fname = "Luxury_url_" .. tostring(os.time() % 100000) .. "." .. ext
+				writefile(fname, game:HttpGet(s.value))
+				asset = getcustomasset(fname)
+			end
+			songSound:Stop()
+			songSound.SoundId = asset
+			songSound:Play()
+		end)
+		if ok then
+			nowName = s.name
+			repeatLeft = repeatCount - 1
+		end
+	end)
+end
+
+songSound.Ended:Connect(function()
+	if closed or songSound.Looped or repeatLeft <= 0 or not nowName then return end
+	repeatLeft = repeatLeft - 1
+	pcall(function()
+		songSound.TimePosition = 0
+		songSound:Play()
+	end)
+end)
+
+pcall(function()
+	if isfile and isfile(SONGS_FILE) then
+		local data = HttpService:JSONDecode(readfile(SONGS_FILE))
+		for _, d in ipairs(data) do
+			if d.name and d.kind and d.value then
+				table.insert(songs, {name = d.name, kind = d.kind, value = d.value, custom = true})
+			end
+		end
+	end
+end)
+
+-- ===================== نظام الجودة السينمائية =====================
+local CINE = {on = false, preset = "cine", fovValue = nil}
+local savedLighting = {}
+
+local function cineApply()
+	if CINE.on then return end
+	CINE.on = true
+	pcall(function()
+		savedLighting.Ambient = Lighting.Ambient
+		savedLighting.Brightness = Lighting.Brightness
+		savedLighting.ColorShift_Top = Lighting.ColorShift_Top
+		savedLighting.OutdoorAmbient = Lighting.OutdoorAmbient
+		savedLighting.FogEnd = Lighting.FogEnd
+		savedLighting.Technology = Lighting.Technology
+		Lighting.Ambient = Color3.fromRGB(40, 40, 55)
+		Lighting.Brightness = 2.2
+		Lighting.ColorShift_Top = Color3.fromRGB(180, 160, 255)
+		Lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 90)
+		Lighting.FogEnd = 800
+		pcall(function() Lighting.Technology = Enum.Technology.Future end)
+	end)
+end
+
+local function cineRestore()
+	if not CINE.on then return end
+	CINE.on = false
+	pcall(function()
+		if savedLighting.Ambient then Lighting.Ambient = savedLighting.Ambient end
+		if savedLighting.Brightness then Lighting.Brightness = savedLighting.Brightness end
+		if savedLighting.ColorShift_Top then Lighting.ColorShift_Top = savedLighting.ColorShift_Top end
+		if savedLighting.OutdoorAmbient then Lighting.OutdoorAmbient = savedLighting.OutdoorAmbient end
+		if savedLighting.FogEnd then Lighting.FogEnd = savedLighting.FogEnd end
+		if savedLighting.Technology then Lighting.Technology = savedLighting.Technology end
+	end)
+end
+
+-- ===================== نظام التدعيس (Stomp) =====================
+local stompRun = false
+local clickCPS = 8
+local lastClick = 0
+local autoClick = false
+
+local function doClick(tool)
+	pcall(function() tool:Activate() end)
+	if mouse1click then pcall(mouse1click) end
+end
+
+local function getTool(ch)
+	local t = ch:FindFirstChildOfClass("Tool")
+	if t then return t end
+	local hum = ch:FindFirstChildOfClass("Humanoid")
+	local bp = lp:FindFirstChildOfClass("Backpack")
+	local bt = bp and bp:FindFirstChildOfClass("Tool")
+	if bt and hum then
+		pcall(function() hum:EquipTool(bt) end)
+		return bt
+	end
+	return nil
+end
+
+table.insert(conns, RunService.Heartbeat:Connect(function()
+	if closed or not autoClick then return end
+	local ch = lp.Character
+	local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+	local root = ch and ch:FindFirstChild("HumanoidRootPart")
+	if not (hum and root) or hum.Health <= 0 then return end
+	local now = os.clock()
+	if hum.FloorMaterial ~= Enum.Material.Air and now - lastClick > 0.28 then
+		hum.Jump = true
+	end
+	local tool = getTool(ch)
+	if tool and now - lastClick >= 1 / math.max(clickCPS, 1) then
+		lastClick = now
+		doClick(tool)
+	end
+end))
+
+-- ===================== الواجهة Luxury =====================
+local P = {
+	bg0 = Color3.fromHex("#0A0A12"),
+	bg1 = Color3.fromHex("#1A1A2E"),
+	card = Color3.fromHex("#12121F"),
+	card2 = Color3.fromHex("#1E1E32"),
+	a1 = Color3.fromHex("#8A2BE2"),
+	a2 = Color3.fromHex("#FF00FF"),
+	ok = Color3.fromRGB(56, 214, 140),
+	bad = Color3.fromRGB(255, 84, 104),
+	text = Color3.fromRGB(240, 243, 255),
+	sub = Color3.fromRGB(150, 162, 196),
+	line = Color3.fromHex("#2A2A45"),
+}
+
+local gui = new("ScreenGui", {Name = "LuxuryFull", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true}, PlayerGui)
+local blur = Instance.new("BlurEffect", Lighting)
+blur.Size = 0
+
+-- زر الفتح
+local openBtn = new("TextButton", {
+	Size = UDim2.fromOffset(140, 46), Position = UDim2.fromOffset(15, 15),
+	Text = "✨ LUXURY", BackgroundColor3 = P.a1, TextColor3 = Color3.new(1,1,1),
+	Font = Enum.Font.GothamBold, TextSize = 16, ZIndex = 50, AutoButtonColor = false
+}, gui)
+corner(openBtn, 14)
+stroke(openBtn, P.a2, 1.5)
+local openGrad = new("UIGradient", {Color = ColorSequence.new(P.a1, P.a2), Rotation = 45}, openBtn)
+
+-- النافذة الرئيسية
+local main = new("Frame", {
+	Size = UDim2.fromOffset(520, 360), Position = UDim2.new(0.5, -260, 0.5, -180),
+	BackgroundColor3 = P.bg0, BackgroundTransparency = 0.08, Active = true, Visible = false, ZIndex = 10
+}, gui)
+corner(main, 20)
+main.Draggable = true
+
+local mainStroke = stroke(main, P.a1, 2)
+task.spawn(function()
+	local cols = {P.a1, P.a2, Color3.fromHex("#00FFFF"), P.a1}
+	local i = 1
+	while main.Parent and not closed do
+		TweenService:Create(mainStroke, TweenInfo.new(2.2), {Color = cols[i]}):Play()
+		i = i % 4 + 1
+		task.wait(2.2)
+	end
+end)
+new("UIGradient", {Color = ColorSequence.new(Color3.fromHex("#1A1A2E"), Color3.fromHex("#0A0A12")), Rotation = 25}, main)
+
+-- شريط علوي
+local topBar = new("Frame", {Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1}, main)
+new("TextLabel", {
+	Position = UDim2.fromOffset(18, 8), Size = UDim2.fromOffset(350, 24),
+	Text = "✨ LUXURY FULL", BackgroundTransparency = 1, TextColor3 = Color3.new(1,1,1),
+	Font = Enum.Font.GothamBlack, TextSize = 20, TextXAlignment = Enum.TextXAlignment.Left
+}, topBar)
+new("TextLabel", {
+	Position = UDim2.fromOffset(18, 30), Size = UDim2.fromOffset(400, 16),
+	Text = "Auto • Assist • Skins • Kill FX • Songs • Extras", BackgroundTransparency = 1,
+	TextColor3 = P.sub, Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left
+}, topBar)
+
+local closeBtn = new("TextButton", {
+	Position = UDim2.new(1, -40, 0, 12), Size = UDim2.fromOffset(28, 28),
+	Text = "✕", BackgroundColor3 = Color3.fromRGB(255, 50, 50), TextColor3 = Color3.new(1,1,1),
+	Font = Enum.Font.GothamBold, TextSize = 14, AutoButtonColor = false
+}, topBar)
+corner(closeBtn, 8)
+
+local miniBtn = new("TextButton", {
+	Position = UDim2.new(1, -78, 0, 12), Size = UDim2.fromOffset(28, 28),
+	Text = "–", BackgroundColor3 = P.card2, TextColor3 = P.text,
+	Font = Enum.Font.GothamBold, TextSize = 16, AutoButtonColor = false
+}, topBar)
+corner(miniBtn, 8)
+
+-- الشريط الجانبي
+local side = new("Frame", {
+	Position = UDim2.fromOffset(12, 58), Size = UDim2.fromOffset(130, 290),
+	BackgroundColor3 = P.card, BackgroundTransparency = 0.2
+}, main)
+corner(side, 14)
+stroke(side, P.line, 1, 0.4)
+
+local sideList = new("ScrollingFrame", {
+	Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
+	ScrollBarThickness = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new()
+}, side)
+new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, sideList)
+new("UIPadding", {PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8)}, sideList)
+
+local pages, tabBtns = {}, {}
+local function newPage(id)
+	local f = new("ScrollingFrame", {
+		Position = UDim2.fromOffset(148, 58), Size = UDim2.new(1, -160, 1, -68),
+		BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+		ScrollBarImageColor3 = P.a1, AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(), Visible = false, ScrollingDirection = Enum.ScrollingDirection.Y
+	}, main)
+	new("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, f)
+	new("UIPadding", {PaddingRight = UDim.new(0, 6), PaddingBottom = UDim.new(0, 12)}, f)
+	pages[id] = f
+	return f
+end
+
+local function showTab(id)
+	for k, f in pairs(pages) do f.Visible = (k == id) end
+	for k, b in pairs(tabBtns) do
+		local on = (k == id)
+		b.fill.BackgroundTransparency = on and 0 or 1
+		b.lbl.TextColor3 = on and Color3.new(1,1,1) or P.sub
+		b.bar.Visible = on
+	end
+end
+
+local TABS = {
+	{"main", "⚡", T("الأوتو والأسيست", "Auto & Assist")},
+	{"skins", "👤", T("السكنات", "Skins")},
+	{"fx", "✨", T("تأثيرات القتل", "Kill FX")},
+	{"songs", "🎵", T("الأغاني", "Songs")},
+	{"extra", "🎭", T("ميزات إضافية", "Extras")},
+	{"misc", "⚙", T("الإعدادات", "Settings")},
+	{"info", "ℹ", T("معلوماتي", "My Info")},
+}
+
+for n, t in ipairs(TABS) do
+	local b = new("TextButton", {
+		Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 38),
+		BackgroundTransparency = 1, LayoutOrder = n, ClipsDescendants = true
+	}, sideList)
+	corner(b, 10)
+	local fill = new("Frame", {Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(1,1,1), BackgroundTransparency = 1, BorderSizePixel = 0}, b)
+	corner(fill, 10)
+	new("UIGradient", {Color = ColorSequence.new(P.a1, P.a2)}, fill)
+	local lbl = new("TextLabel", {
+		BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -10, 1, 0),
+		Text = t[2] .. "  " .. t[3], TextColor3 = P.sub, Font = Enum.Font.GothamBold, TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2
+	}, b)
+	local bar = new("Frame", {
+		Position = UDim2.new(0, 0, 0.5, -9), Size = UDim2.fromOffset(3, 18),
+		BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, Visible = false, ZIndex = 3
+	}, b)
+	corner(bar, 2)
+	tabBtns[t[1]] = {btn = b, fill = fill, lbl = lbl, bar = bar}
+	b.MouseButton1Click:Connect(function() showTab(t[1]) end)
+end
+
+-- دوال واجهة مساعدة
+local order = setmetatable({}, {__mode = "k"})
+local function nextOrder(parent)
+	order[parent] = (order[parent] or 0) + 1
+	return order[parent]
+end
+
+local function section(page, text)
+	return new("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, Text = text,
+		TextColor3 = P.a2, Font = Enum.Font.GothamBlack, TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = nextOrder(page)
+	}, page)
+end
+
+local function note(page, text)
+	return new("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+		Text = text, TextColor3 = P.sub, Font = Enum.Font.Gotham, TextSize = 12,
+		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = nextOrder(page)
+	}, page)
+end
+
+local function cardFrame(page, h)
+	local c = new("Frame", {Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = P.card, LayoutOrder = nextOrder(page)}, page)
+	corner(c, 12)
+	stroke(c, P.line, 1, 0.5)
+	return c
+end
+
+local function button(page, text, cb, color)
+	local b = new("TextButton", {
+		Text = text, AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 38),
+		BackgroundColor3 = color or P.card2, TextColor3 = P.text,
+		Font = Enum.Font.GothamBold, TextSize = 14, LayoutOrder = nextOrder(page)
+	}, page)
+	corner(b, 11)
+	stroke(b, P.line, 1, 0.4)
+	b.MouseButton1Click:Connect(function() pcall(cb) end)
+	return b
+end
+
+local function toggle(page, titleText, desc, get, set)
+	local h = (desc and desc ~= "") and 54 or 42
+	local c = cardFrame(page, h)
+	local btn = new("TextButton", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", AutoButtonColor = false}, c)
+	new("TextLabel", {
+		BackgroundTransparency = 1, Position = UDim2.fromOffset(14, desc and 7 or 0),
+		Size = UDim2.new(1, -70, 0, desc and 20 or h), Text = titleText,
+		TextColor3 = P.text, Font = Enum.Font.GothamBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left
+	}, btn)
+	if desc and desc ~= "" then
+		new("TextLabel", {
+			BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 28),
+			Size = UDim2.new(1, -70, 0, 20), Text = desc, TextColor3 = P.sub,
+			Font = Enum.Font.Gotham, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left
+		}, btn)
+	end
+	local sw = new("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
+		Size = UDim2.fromOffset(44, 24), BackgroundColor3 = P.card2
+	}, btn)
+	corner(sw, 12)
+	local knob = new("Frame", {Position = UDim2.fromOffset(3, 3), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = Color3.new(1,1,1)}, sw)
+	corner(knob, 9)
+	local function render()
+		local on = get() and true or false
+		sw.BackgroundColor3 = on and P.a1 or P.card2
+		knob.Position = on and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3)
+	end
+	btn.MouseButton1Click:Connect(function()
+		pcall(set, not get())
+		render()
+	end)
+	render()
+	return {render = render}
+end
+
+local function slider(page, titleText, minV, maxV, step, get, set, fmt)
+	local c = cardFrame(page, 52)
+	new("TextLabel", {
+		BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 5), Size = UDim2.new(0.55, 0, 0, 18),
+		Text = titleText, TextColor3 = P.text, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left
+	}, c)
+	local valL = new("TextLabel", {
+		BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 5),
+		Size = UDim2.new(0.35, 0, 0, 18), Text = "", TextColor3 = P.a1, Font = Enum.Font.GothamBlack, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Right
+	}, c)
+	local hit = new("TextButton", {
+		Position = UDim2.fromOffset(12, 28), Size = UDim2.new(1, -24, 0, 18),
+		BackgroundTransparency = 1, Text = "", AutoButtonColor = false
+	}, c)
+	local bar = new("Frame", {Position = UDim2.new(0, 0, 0.5, -3), Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = P.card2}, hit)
+	corner(bar, 3)
+	local fill = new("Frame", {Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1,1,1)}, bar)
+	corner(fill, 3)
+	new("UIGradient", {Color = ColorSequence.new(P.a1, P.a2)}, fill)
+	local knob = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.fromOffset(14, 14), BackgroundColor3 = Color3.new(1,1,1)
+	}, bar)
+	corner(knob, 7)
+	stroke(knob, P.a1, 2)
+	local s = {}
+	function s.render()
+		local v = get()
+		local r = math.clamp((v - minV) / (maxV - minV), 0, 1)
+		fill.Size = UDim2.new(r, 0, 1, 0)
+		knob.Position = UDim2.new(r, 0, 0.5, 0)
+		valL.Text = fmt and fmt(v) or tostring(v)
+	end
+	function s.setFromX(px)
+		local aw = math.max(bar.AbsoluteSize.X, 1)
+		local r = math.clamp((px - bar.AbsolutePosition.X) / aw, 0, 1)
+		local v = minV + r * (maxV - minV)
+		v = math.floor(v / step + 0.5) * step
+		v = math.clamp(v, minV, maxV)
+		pcall(set, v)
+		s.render()
+	end
+	hit.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+			s.setFromX(i.Position.X)
+			local move, endc
+			move = UserInputService.InputChanged:Connect(function(ii)
+				if ii.UserInputType == Enum.UserInputType.MouseMovement or ii.UserInputType == Enum.UserInputType.Touch then
+					s.setFromX(ii.Position.X)
+				end
+			end)
+			endc = UserInputService.InputEnded:Connect(function(ii)
+				if ii.UserInputType == Enum.UserInputType.MouseButton1 or ii.UserInputType == Enum.UserInputType.Touch then
+					move:Disconnect()
+					endc:Disconnect()
+				end
+			end)
+		end
+	end)
+	s.render()
+	return s
+end
+
+-- ===================== صفحة الأوتو والأسيست =====================
+local pMain = newPage("main")
+do
+	local st = {assist = false, grab = false, jump = false, auto = false, stick = false, grabDelay = 10, wallDist = 4}
+
+	-- زر عائم للأوتو
+	local AutoGui = new("Frame", {
+		Name = "LuxuryAutoMini", Position = UDim2.new(0.04, 0, 0.38, 0),
+		Size = UDim2.fromOffset(175, 100), BackgroundColor3 = P.bg1, Active = true, Visible = false, ZIndex = 40
+	}, gui)
+	corner(AutoGui, 14)
+	stroke(AutoGui, P.a1, 2, 0.15)
+	new("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), Text = T("الأوتو", "AUTO"),
+		TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBlack, TextSize = 16, ZIndex = 41
+	}, AutoGui)
+	local AutoBtn = new("TextButton", {
+		Position = UDim2.new(0.08, 0, 0, 36), Size = UDim2.new(0.84, 0, 0, 48),
+		Text = T("تفعيل", "START"), AutoButtonColor = false, BackgroundColor3 = P.ok,
+		TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBlack, TextSize = 18, ZIndex = 41
+	}, AutoGui)
+	corner(AutoBtn, 12)
+	local FollowingState = false
+	local function renderAuto()
+		AutoBtn.Text = FollowingState and T("إيقاف", "STOP") or T("تفعيل", "START")
+		AutoBtn.BackgroundColor3 = FollowingState and P.bad or P.ok
+	end
+	AutoBtn.MouseButton1Click:Connect(function()
+		FollowingState = not FollowingState
+		renderAuto()
+	end)
+	-- سحب الزر
+	do
+		local drag, ds, sp = false, nil, nil
+		AutoGui.InputBegan:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+				drag, ds, sp = true, i.Position, AutoGui.Position
+			end
+		end)
+		table.insert(conns, UserInputService.InputChanged:Connect(function(i)
+			if drag and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then
+				local d = i.Position - ds
+				AutoGui.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+			end
+		end))
+		table.insert(conns, UserInputService.InputEnded:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
+		end))
+	end
+	table.insert(conns, RunService.RenderStepped:Connect(function()
+		if closed or not (AutoGui.Visible and FollowingState) then return end
+		if MohamedAssist.manualHeld() then return end
+		local MyChar = lp.Character
+		local MyHum = MyChar and MyChar:FindFirstChildOfClass("Humanoid")
+		local MyRoot = MyChar and MyChar:FindFirstChild("HumanoidRootPart")
+		if not (MyHum and MyRoot) or MyHum.Health <= 0 then return end
+		local HasTool = MyChar:FindFirstChildOfClass("Tool")
+		local grabOn = MohamedAssist.isGrab()
+		if HasTool or grabOn then
+			local TargetRoot = MohamedAssist.pickTarget(MyRoot, (not HasTool) and grabOn, 1e9)
+			if TargetRoot then MyHum:MoveTo(TargetRoot.Position) end
+		end
+	end))
+
+	section(pMain, T("الأوتو والأسيست", "AUTO & ASSIST"))
+	toggle(pMain, T("الأوتو", "Auto"), T("يطلع زر عائم تشغّل منه الأوتو", "Shows floating Auto button"), function() return st.auto end, function(v)
+		st.auto = v
+		AutoGui.Visible = v
+		if not v then FollowingState = false renderAuto() end
+	end)
+	toggle(pMain, T("أسيست (مطاردة)", "Assist Chase"), T("يلحق الخصم ويوقف قريب منه", "Chases opponent and stops close"), function() return st.assist end, function(v)
+		st.assist = v
+		MohamedAssist.SetAssist(v)
+	end)
+	toggle(pMain, T("أوتو قراب", "Auto Grab"), T("ياخذ القنبلة لما تقرب", "Takes the bomb when close"), function() return st.grab end, function(v)
+		st.grab = v
+		MohamedAssist.SetGrab(v)
+	end)
+	slider(pMain, T("عداد الأوتو قراب (ثواني)", "Auto Grab timer (sec)"), 1, 10, 1, function() return st.grabDelay end, function(v)
+		st.grabDelay = v
+		MohamedAssist.SetGrabDelay(v)
+	end, function(v) return tostring(v) .. "s" end)
+	toggle(pMain, T("أوتو نط", "Auto Jump"), T("ينط مع الخصم", "Jumps with the opponent"), function() return st.jump end, function(v)
+		st.jump = v
+		MohamedAssist.SetJump(v)
+	end)
+	toggle(pMain, T("بدون تعلق بالجدران", "No wall stick"), T("يمنعك تقرب من الجدار أكتر من المسافة", "Stops you from getting too close to walls"), function() return st.stick end, function(v)
+		st.stick = v
+		MohamedAssist.SetAntiStick(v)
+	end)
+	slider(pMain, T("مسافة الجدار (1-10)", "Wall distance (1-10)"), 1, 10, 1, function() return st.wallDist end, function(v)
+		st.wallDist = v
+		MohamedAssist.SetWallDist(v)
+	end, function(v) return tostring(v) end)
+	note(pMain, T("كل الميزات مطفية لين تشغلها بنفسك. لو حركت بيدك الأسيست يوقف ويكمل لما تشيل يدك.", "Everything is off until you enable it. Manual movement pauses Assist."))
+
+	-- ===== أدوات إضافية: أسست تراكر + فليك/نظر/أسيست =====
+	section(pMain, T("أدوات إضافية", "EXTRA TOOLS"))
+
+	local trackerLoaded = false
+	button(pMain, "🎯  " .. T("أسست تراكر (أفضل)", "Better Assist Tracker"), function()
+		if trackerLoaded then return end
+		trackerLoaded = true
+		pcall(function()
+			loadstring([[
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local localPlayer = Players.LocalPlayer
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "TimeBombChaser"
+screenGui.ResetOnSpawn = false
+local parentContainer = (gethui and gethui()) or game:GetService("CoreGui") or localPlayer:FindFirstChildOfClass("PlayerGui")
+screenGui.Parent = parentContainer
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 150, 0, 70)
+frame.Position = UDim2.new(0.5, -75, 0.4, 0)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+local autoButton = Instance.new("TextButton")
+autoButton.Size = UDim2.new(0, 120, 0, 40)
+autoButton.Position = UDim2.new(0.5, -60, 0.5, -20)
+autoButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+autoButton.Text = "Auto: OFF"
+autoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+autoButton.Font = Enum.Font.GothamBold
+autoButton.TextSize = 16
+autoButton.Parent = frame
+Instance.new("UICorner", autoButton).CornerRadius = UDim.new(0, 8)
+
+local isAutoEnabled = false
+local chaseConnection = nil
+local closestTarget = nil
+local lastCheckTime = 0
+local CHECK_INTERVAL = 0.05
+
+local function isTeammateOrGreen(targetPlayer)
+	if localPlayer.Team and targetPlayer.Team == localPlayer.Team then return true end
+	local character = targetPlayer.Character
+	if not character then return false end
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Highlight") then
+			local color = child.FillColor or child.OutlineColor
+			if color and color.G > 0.5 and color.R < 0.4 and color.B < 0.4 then return true end
+		elseif child:IsA("SelectionBox") or child:IsA("BoxHandleAdornment") then
+			local color = child.Color3
+			if color and color.G > 0.5 and color.R < 0.4 and color.B < 0.4 then return true end
+		end
+	end
+	local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Head")
+	if root then
+		for _, obj in ipairs(root:GetChildren()) do
+			if obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("ParticleEmitter") then
+				local color = obj.Color
+				if typeof(color) == "ColorSequence" then color = color.Keypoints[1].Value end
+				if color and color.G > 0.5 and color.R < 0.4 and color.B < 0.4 then return true end
+			end
+		end
+	end
+	return false
+end
+
+local function updateClosestTarget()
+	local myChar = localPlayer.Character
+	if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then closestTarget = nil return end
+	local myPos = myChar.HumanoidRootPart.Position
+	local shortestDistance = math.huge
+	local tempTarget = nil
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= localPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChildOfClass("Humanoid") then
+			if p.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+				if not isTeammateOrGreen(p) then
+					local dist = (p.Character.HumanoidRootPart.Position - myPos).Magnitude
+					if dist < shortestDistance then
+						shortestDistance = dist
+						tempTarget = p
+					end
+				end
+			end
+		end
+	end
+	closestTarget = tempTarget
+end
+
+local function hasTool()
+	local inHand = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Tool")
+	local inBackpack = localPlayer.Backpack:FindFirstChildOfClass("Tool")
+	return (inHand or inBackpack)
+end
+
+local function startChasing()
+	chaseConnection = RunService.Heartbeat:Connect(function()
+		if not isAutoEnabled then return end
+		local myChar = localPlayer.Character
+		if myChar and myChar:FindFirstChild("Humanoid") and myChar:FindFirstChild("HumanoidRootPart") then
+			local myHumanoid = myChar.Humanoid
+			local currentTime = os.clock()
+			if currentTime - lastCheckTime >= CHECK_INTERVAL then
+				lastCheckTime = currentTime
+				updateClosestTarget()
+			end
+			if hasTool() and closestTarget and closestTarget.Character and closestTarget.Character:FindFirstChild("HumanoidRootPart") then
+				myHumanoid:MoveTo(closestTarget.Character.HumanoidRootPart.Position)
+			else
+				myHumanoid:MoveTo(myChar.HumanoidRootPart.Position)
+			end
+		end
+	end)
+end
+
+local function stopChasing()
+	if chaseConnection then chaseConnection:Disconnect() chaseConnection = nil end
+	closestTarget = nil
+	local myChar = localPlayer.Character
+	if myChar and myChar:FindFirstChild("Humanoid") and myChar:FindFirstChild("HumanoidRootPart") then
+		myChar.Humanoid:MoveTo(myChar.HumanoidRootPart.Position)
+	end
+end
+
+autoButton.MouseButton1Click:Connect(function()
+	isAutoEnabled = not isAutoEnabled
+	if isAutoEnabled then
+		autoButton.Text = "Auto: ON"
+		autoButton.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+		startChasing()
+	else
+		autoButton.Text = "Auto: OFF"
+		autoButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+		stopChasing()
+	end
+end)
+			]])()
+		end)
+	end, Color3.fromRGB(40, 90, 50))
+
+	local mapHubLoaded = false
+	button(pMain, "⚙️  " .. T("فليك + نظر + أسيست", "Flick + Look + Assist"), function()
+		if mapHubLoaded then return end
+		mapHubLoaded = true
+		pcall(function()
+			loadstring([[
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local root = char:WaitForChild("HumanoidRootPart")
+local humanoid = char:WaitForChild("Humanoid")
+
+local wallJumpOn = false
+local lookOn = false
+local assistOn = false
+local isFlicking = false
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "MyMapHub"
+gui.ResetOnSpawn = false
+local parentContainer = (gethui and gethui()) or game:GetService("CoreGui") or player:FindFirstChildOfClass("PlayerGui")
+gui.Parent = parentContainer
+
+local openBtn = Instance.new("TextButton")
+openBtn.Size = UDim2.new(0, 40, 0, 40)
+openBtn.Position = UDim2.new(0, 12, 0.5, -20)
+openBtn.Text = "⚙️"
+openBtn.TextScaled = true
+openBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+openBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+openBtn.BorderSizePixel = 0
+openBtn.Parent = gui
+Instance.new("UICorner", openBtn).CornerRadius = UDim.new(1, 0)
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 190, 0, 160)
+main.Position = UDim2.new(0.5, -95, 0.5, -80)
+main.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+local bg = Instance.new("ImageLabel")
+bg.Name = "Bg"
+bg.Size = UDim2.new(1, 0, 1, 0)
+bg.Position = UDim2.new(0, 0, 0, 0)
+bg.BackgroundTransparency = 1
+bg.Image = "rbxassetid://137420246811640"
+bg.ImageTransparency = 0.35
+bg.ScaleType = Enum.ScaleType.Crop
+bg.ZIndex = 0
+bg.Parent = main
+Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 12)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 28)
+title.Text = "فليك + نظر + أسيست"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.BackgroundTransparency = 1
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.ZIndex = 2
+title.Parent = main
+
+local function makeToggle(text, yPos, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0.9, 0, 0, 34)
+	btn.Position = UDim2.new(0.05, 0, 0, yPos)
+	btn.Text = text .. " : OFF"
+	btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	btn.BackgroundTransparency = 0.15
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.TextScaled = true
+	btn.Font = Enum.Font.GothamBold
+	btn.BorderSizePixel = 0
+	btn.ZIndex = 2
+	btn.Parent = main
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+	local on = false
+	btn.MouseButton1Click:Connect(function()
+		on = not on
+		btn.Text = text .. (on and " : ON" or " : OFF")
+		btn.BackgroundColor3 = on and Color3.fromRGB(0, 150, 70) or Color3.fromRGB(40, 40, 50)
+		callback(on)
+	end)
+end
+
+makeToggle("فليك تلبورت", 32, function(v) wallJumpOn = v end)
+makeToggle("أحسد العدو", 70, function(v) lookOn = v end)
+makeToggle("اسيست", 108, function(v) assistOn = v end)
+
+openBtn.MouseButton1Click:Connect(function()
+	main.Visible = not main.Visible
+end)
+
+RunService.RenderStepped:Connect(function()
+	if not lookOn then return end
+	if isFlicking then return end
+	local nearest = nil
+	local shortest = math.huge
+	for _, other in pairs(Players:GetPlayers()) do
+		if other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
+			local dist = (other.Character.HumanoidRootPart.Position - root.Position).Magnitude
+			if dist < shortest then
+				shortest = dist
+				nearest = other.Character
+			end
+		end
+	end
+	if nearest then
+		local tp = nearest.HumanoidRootPart.Position
+		root.CFrame = CFrame.lookAt(root.Position, Vector3.new(tp.X, root.Position.Y, tp.Z))
+	end
+end)
+
+local currentTarget = nil
+
+local function getNearestPlayer()
+	local character = player.Character
+	if not character or not character:FindFirstChild("HumanoidRootPart") then
+		return nil
+	end
+	local rootPart = character.HumanoidRootPart
+	local nearest = nil
+	local closestDist = math.huge
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			local otherHumanoid = otherPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if otherHumanoid and otherHumanoid.Health > 0 then
+				local dist = (rootPart.Position - otherPlayer.Character.HumanoidRootPart.Position).Magnitude
+				if dist < closestDist then
+					closestDist = dist
+					nearest = otherPlayer
+				end
+			end
+		end
+	end
+	return nearest
+end
+
+local function hasToolEquipped()
+	local character = player.Character
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if character and character:FindFirstChildOfClass("Tool") then
+		return true
+	end
+	if backpack and backpack:FindFirstChildOfClass("Tool") then
+		return true
+	end
+	return false
+end
+
+RunService.Heartbeat:Connect(function()
+	if not assistOn then return end
+	if not hasToolEquipped() then return end
+	local character = player.Character
+	if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+	local humanoid2 = character:FindFirstChildOfClass("Humanoid")
+	local rootPart = character.HumanoidRootPart
+	if not humanoid2 then return end
+	if currentTarget and currentTarget.Parent and currentTarget.Parent:FindFirstChild("Humanoid") then
+		local targetHumanoid = currentTarget.Parent.Humanoid
+		if targetHumanoid.Health <= 0 or (rootPart.Position - currentTarget.Position).Magnitude > 50 then
+			currentTarget = nil
+		end
+	else
+		currentTarget = nil
+	end
+	if not currentTarget then
+		local nearestPlayer = getNearestPlayer()
+		if nearestPlayer and nearestPlayer.Character then
+			currentTarget = nearestPlayer.Character:FindFirstChild("HumanoidRootPart")
+		end
+	end
+	if currentTarget then
+		humanoid2:MoveTo(currentTarget.Position)
+		local lookAt = Vector3.new(currentTarget.Position.X, rootPart.Position.Y, currentTarget.Position.Z)
+		rootPart.CFrame = CFrame.new(rootPart.Position, lookAt)
+	end
+end)
+
+local lastWallJump = 0
+local flickDir = 1
+local savedLook = nil
+
+local function getWall()
+	local params = RaycastParams.new()
+	params.FilterDescendantsInstances = {char}
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	for _, dir in pairs({root.CFrame.LookVector, -root.CFrame.LookVector, root.CFrame.RightVector, -root.CFrame.RightVector}) do
+		local result = workspace:Raycast(root.Position, dir * 3.5, params)
+		if result then return true, result.Normal end
+	end
+	return false, nil
+end
+
+UserInputService.JumpRequest:Connect(function()
+	if not wallJumpOn then return end
+	if tick() - lastWallJump < 0.22 then return end
+	if humanoid.FloorMaterial == Enum.Material.Air then
+		local touching, normal = getWall()
+		if touching then
+			lastWallJump = tick()
+			local vel = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(vel.X, 55, vel.Z)
+
+			if not isFlicking then
+				isFlicking = true
+				savedLook = root.CFrame.LookVector
+				flickDir = -flickDir
+				local flickAngle = 120 * flickDir
+				root.CFrame = CFrame.lookAt(root.Position, root.Position + savedLook) * CFrame.Angles(0, math.rad(flickAngle), 0)
+				task.delay(0.08, function()
+					if savedLook then
+						root.CFrame = CFrame.lookAt(root.Position, root.Position + savedLook)
+					end
+					isFlicking = false
+				end)
+			end
+		end
+	end
+end)
+
+player.CharacterAdded:Connect(function(newChar)
+	char = newChar
+	root = newChar:WaitForChild("HumanoidRootPart")
+	humanoid = newChar:WaitForChild("Humanoid")
+	currentTarget = nil
+	isFlicking = false
+end)
+			]])()
+		end)
+	end, Color3.fromRGB(30, 60, 100))
+end
+
+-- ===================== صفحة السكنات =====================
+local pSkins = newPage("skins")
+do
+	section(pSkins, T("جلب سكن أي لاعب", "COPY ANY PLAYER'S SKIN"))
+	local status
+	local inputCard = cardFrame(pSkins, 48)
+	local userBox = new("TextBox", {
+		Position = UDim2.fromOffset(8, 7), Size = UDim2.new(1, -115, 0, 34),
+		BackgroundColor3 = P.bg0, TextColor3 = P.text, PlaceholderText = T("اكتب اليوزر...", "Type username..."),
+		PlaceholderColor3 = P.sub, Text = "", ClearTextOnFocus = false, Font = Enum.Font.GothamMedium, TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left
+	}, inputCard)
+	corner(userBox, 9)
+	stroke(userBox, P.line, 1, 0.4)
+	new("UIPadding", {PaddingLeft = UDim.new(0, 10)}, userBox)
+	local goBtn = new("TextButton", {
+		Text = T("لبس", "Wear"), AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -8, 0, 7), Size = UDim2.fromOffset(95, 34),
+		BackgroundColor3 = P.a1, TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBlack, TextSize = 13
+	}, inputCard)
+	corner(goBtn, 9)
+	status = note(pSkins, T("يجيب سكن اللاعب حتى لو اللعبة ما تدعم تغيير الشكل.", "Works even if the game blocks avatar changes."))
+	goBtn.MouseButton1Click:Connect(function()
+		local name = userBox.Text
+		if name == "" then
+			status.Text = T("اكتب يوزر", "Type a username")
+			status.TextColor3 = P.bad
+			return
+		end
+		status.Text = T("جاري جلب السكن...", "Fetching skin...")
+		status.TextColor3 = Color3.fromRGB(220, 200, 80)
+		task.spawn(function()
+			local ok, err = applyUserSkin(name, {exact = true})
+			if ok then
+				status.Text = T("تم لبس سكن ", "Applied skin of ") .. name
+				status.TextColor3 = P.ok
+				skinActive = true
+			else
+				status.Text = T("فشل: ", "Failed: ") .. tostring(err)
+				status.TextColor3 = P.bad
+			end
+		end)
+	end)
+	button(pSkins, T("↩ إرجاع سكني الأصلي", "↩ Restore original skin"), function()
+		restoreSkin()
+		status.Text = T("رجع شكلك الأصلي", "Original look restored")
+		status.TextColor3 = P.sub
+	end, Color3.fromRGB(70, 30, 40))
+
+	section(pSkins, T("المظهر", "LOOKS"))
+	toggle(pSkins, "Headless", T("إخفاء الراس", "Hide head"), function() return HEADLESS end, function(v)
+		HEADLESS = v
+		if skinActive then task.spawn(doApply) end
+	end)
+	toggle(pSkins, "Korblox", T("الرجل اليمين تصير Korblox", "Right leg becomes Korblox"), function() return KORBLOX end, function(v)
+		KORBLOX = v
+		if skinActive then task.spawn(doApply) end
+	end)
+
+	section(pSkins, T("المعرض", "GALLERY") .. " (" .. #SKINS .. ")")
+	local grid = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = nextOrder(pSkins)
+	}, pSkins)
+	new("UIGridLayout", {CellSize = UDim2.fromOffset(95, 100), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder}, grid)
+
+	for i, sk in ipairs(SKINS) do
+		local b = new("ImageButton", {
+			AutoButtonColor = false, Image = "", ScaleType = Enum.ScaleType.Crop,
+			BackgroundColor3 = P.card, LayoutOrder = i
+		}, grid)
+		corner(b, 11)
+		local stk = stroke(b, P.a1, 1.5, 0.55)
+		new("TextLabel", {
+			AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 20),
+			BackgroundColor3 = Color3.new(0,0,0), BackgroundTransparency = 0.35, Text = tostring(sk.label or ""),
+			TextColor3 = P.text, Font = Enum.Font.GothamMedium, TextSize = 11, TextTruncate = Enum.TextTruncate.AtEnd
+		}, b)
+		b.MouseButton1Click:Connect(function()
+			selectSkin(i)
+			status.Text = T("جاري تطبيق: ", "Applying: ") .. sk.label
+			status.TextColor3 = Color3.fromRGB(220, 200, 80)
+			task.delay(1.8, function()
+				status.Text = T("تم تطبيق ", "Applied ") .. sk.label
+				status.TextColor3 = P.ok
+			end)
+		end)
+		task.spawn(function()
+			local uid = userIdOf(sk.username)
+			if uid then
+				local ok, url = pcall(function()
+					return Players:GetUserThumbnailAsync(uid, Enum.ThumbnailType.AvatarBust, Enum.ThumbnailSize.Size150x150)
+				end)
+				if ok and url and b.Parent then b.Image = url end
+			end
+		end)
+	end
+end
+
+-- ===================== صفحة Kill FX =====================
+local pFx = newPage("fx")
+do
+	local lbl = section(pFx, "")
+	local fxBtns = {}
+	local function refreshFx()
+		for k, pp in ipairs(fxBtns) do
+			local on = (k == KFX.current)
+			pp.st.Color = on and P.ok or P.a1
+			pp.st.Thickness = on and 2.5 or 1.5
+			pp.st.Transparency = on and 0 or 0.55
+		end
+		local e = KFX.list[KFX.current]
+		lbl.Text = T("تأثير القتل: ", "KILL EFFECT: ") .. ((e and e.id ~= "none") and (e.en .. " | " .. e.ar) or T("بدون", "None"))
+	end
+	local grid = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = nextOrder(pFx)
+	}, pFx)
+	new("UIGridLayout", {CellSize = UDim2.new(0.5, -5, 0, 52), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder}, grid)
+	for k, e in ipairs(KFX.list) do
+		local b = new("TextButton", {
+			Text = "", AutoButtonColor = false, BackgroundColor3 = P.card, LayoutOrder = k
+		}, grid)
+		corner(b, 11)
+		local stk = stroke(b, P.a1, 1.5, 0.55)
+		new("TextLabel", {
+			BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 0, 18),
+			Text = e.en, TextColor3 = P.text, Font = Enum.Font.GothamBold, TextSize = 13
+		}, b)
+		new("TextLabel", {
+			BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 18),
+			Text = e.ar, TextColor3 = P.sub, Font = Enum.Font.Gotham, TextSize = 12
+		}, b)
+		fxBtns[k] = {b = b, st = stk}
+		b.MouseButton1Click:Connect(function()
+			KFX.current = k
+			refreshFx()
+		end)
+	end
+	refreshFx()
+end
+
+-- ===================== صفحة الأغاني =====================
+local pSongs = newPage("songs")
+do
+	section(pSongs, T("مشغل الأغاني", "SONG PLAYER"))
+	local nowLbl = note(pSongs, T("لا شي يشتغل", "Nothing playing"))
+	nowLbl.TextColor3 = P.a1
+	button(pSongs, "■  " .. T("إيقاف", "Stop"), function()
+		pcall(function() songSound:Stop() end)
+		repeatLeft = 0
+		nowName = nil
+		nowLbl.Text = T("لا شي يشتغل", "Nothing playing")
+	end, P.card2)
+	toggle(pSongs, T("تكرار لا نهائي", "Loop forever"), "", function() return songSound.Looped end, function(v) songSound.Looped = v end)
+	slider(pSongs, T("مستوى الصوت", "Volume"), 0, 100, 5, function() return math.floor(songSound.Volume * 100 + 0.5) end, function(v) songSound.Volume = v / 100 end, function(v) return tostring(v) .. "%" end)
+	slider(pSongs, T("عدد التكرار", "Repeat count"), 1, 50, 1, function() return repeatCount end, function(v)
+		repeatCount = v
+		if nowName then repeatLeft = v - 1 end
+	end, function(v) return "x" .. tostring(v) end)
+
+	local inputCard = cardFrame(pSongs, 48)
+	local songBox = new("TextBox", {
+		Position = UDim2.fromOffset(8, 7), Size = UDim2.new(1, -115, 0, 34),
+		BackgroundColor3 = P.bg0, TextColor3 = P.text, PlaceholderText = T("رقم الصوت أو رابط mp3/ogg", "Sound ID or mp3/ogg link"),
+		PlaceholderColor3 = P.sub, Text = "", ClearTextOnFocus = false, Font = Enum.Font.GothamMedium, TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left
+	}, inputCard)
+	corner(songBox, 9)
+	local addBtn = new("TextButton", {
+		Text = "+ " .. T("إضافة", "Add"), AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -8, 0, 7), Size = UDim2.fromOffset(95, 34),
+		BackgroundColor3 = P.a1, TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBlack, TextSize = 13
+	}, inputCard)
+	corner(addBtn, 9)
+
+	local listFrame = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = nextOrder(pSongs)
+	}, pSongs)
+	new("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, listFrame)
+
+	local function renderSongs()
+		for _, ch in ipairs(listFrame:GetChildren()) do
+			if ch:IsA("GuiObject") then ch:Destroy() end
+		end
+		for k, s in ipairs(songs) do
+			local row = new("Frame", {Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = P.card, LayoutOrder = k}, listFrame)
+			corner(row, 10)
+			stroke(row, P.line, 1, 0.55)
+			new("TextLabel", {
+				BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, s.custom and -120 or -70, 1, 0),
+				Text = s.name, TextColor3 = P.text, Font = Enum.Font.GothamMedium, TextSize = 13,
+				TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd
+			}, row)
+			local play = new("TextButton", {
+				Text = "▶", AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(44, 28),
+				BackgroundColor3 = P.a1, TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBold, TextSize = 14
+			}, row)
+			corner(play, 8)
+			play.MouseButton1Click:Connect(function()
+				playSong(s)
+				nowLbl.Text = T("يشتغل: ", "Playing: ") .. s.name
+			end)
+			if s.custom then
+				local del = new("TextButton", {
+					Text = "✕", AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0.5),
+					Position = UDim2.new(1, -54, 0.5, 0), Size = UDim2.fromOffset(40, 28),
+					BackgroundColor3 = Color3.fromRGB(120, 30, 44), TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBold, TextSize = 13
+				}, row)
+				corner(del, 8)
+				del.MouseButton1Click:Connect(function()
+					table.remove(songs, k)
+					pcall(function()
+						local out = {}
+						for _, ss in ipairs(songs) do
+							if ss.custom then table.insert(out, {name = ss.name, kind = ss.kind, value = ss.value}) end
+						end
+						writefile(SONGS_FILE, HttpService:JSONEncode(out))
+					end)
+					renderSongs()
+				end)
+			end
+		end
+	end
+
+	addBtn.MouseButton1Click:Connect(function()
+		local txt = string.gsub(string.gsub(songBox.Text or "", "^%s+", ""), "%s+$", "")
+		if txt == "" then return end
+		local added = 0
+		for tok in string.gmatch(txt, "[^%s,;]+") do
+			local id = string.match(tok, "^(%d+)$") or string.match(tok, "rbxassetid://(%d+)")
+			if id then
+				table.insert(songs, {name = "ID " .. id, kind = "id", value = id, custom = true})
+				added = added + 1
+			elseif string.find(tok, "^https?://") then
+				local nm = string.match(tok, "([^/%?]+)%s*$") or "Link"
+				table.insert(songs, {name = nm, kind = "url", value = tok, custom = true})
+				added = added + 1
+			end
+		end
+		if added > 0 then
+			songBox.Text = ""
+			pcall(function()
+				local out = {}
+				for _, ss in ipairs(songs) do
+					if ss.custom then table.insert(out, {name = ss.name, kind = ss.kind, value = ss.value}) end
+				end
+				writefile(SONGS_FILE, HttpService:JSONEncode(out))
+			end)
+			renderSongs()
+		end
+	end)
+	renderSongs()
+end
+
+-- ===================== صفحة الميزات الإضافية =====================
+local pExtra = newPage("extra")
+do
+	local X = {headless = HEADLESS, korblox = KORBLOX, wall = false}
+
+	section(pExtra, T("المظهر (يظهر لك فقط)", "LOOKS (client-side)"))
+	toggle(pExtra, "Headless", T("إخفاء الراس", "Hide your head"), function() return X.headless end, function(v)
+		X.headless = v
+		HEADLESS = v
+	end)
+	toggle(pExtra, "Korblox", T("الرجل اليمين Korblox", "Right leg Korblox"), function() return X.korblox end, function(v)
+		X.korblox = v
+		KORBLOX = v
+	end)
+
+	section(pExtra, T("حركة", "MOVEMENT"))
+	toggle(pExtra, "Wall Hop", T("قرب من جدار وانت بالهوا واضغط نط", "Near wall in air, spam jump to hop up"), function() return X.wall end, function(v)
+		X.wall = v
+	end)
+	local lastHop = 0
+	local rp = RaycastParams.new()
+	rp.FilterType = Enum.RaycastFilterType.Exclude
+	table.insert(conns, UserInputService.JumpRequest:Connect(function()
+		if closed or not X.wall then return end
+		local c = lp.Character
+		local hum = c and c:FindFirstChildOfClass("Humanoid")
+		local hrp = c and c:FindFirstChild("HumanoidRootPart")
+		if not (hum and hrp and hum.Health > 0) then return end
+		if hum.FloorMaterial ~= Enum.Material.Air then return end
+		if os.clock() - lastHop < 0.18 then return end
+		rp.FilterDescendantsInstances = {c}
+		local best, bestD = nil, 3.2
+		local cf = hrp.CFrame
+		for _, dir in ipairs({cf.LookVector, -cf.LookVector, cf.RightVector, -cf.RightVector}) do
+			local hit = workspace:Raycast(hrp.Position, dir * 3.2, rp)
+			if hit and math.abs(hit.Normal.Y) < 0.35 and hit.Distance < bestD then
+				best, bestD = hit, hit.Distance
+			end
+		end
+		if not best then return end
+		lastHop = os.clock()
+		local n = best.Normal
+		local jp = hum.UseJumpPower and hum.JumpPower or math.sqrt(2 * workspace.Gravity * hum.JumpHeight)
+		hrp.AssemblyLinearVelocity = Vector3.new(-n.X * 4, math.max(jp, 50), -n.Z * 4)
+	end))
+
+	section(pExtra, T("تدعيس", "STOMP"))
+	local StompGui = new("Frame", {
+		Name = "LuxuryStompMini", Position = UDim2.new(0.04, 0, 0.58, 0),
+		Size = UDim2.fromOffset(175, 100), BackgroundColor3 = P.bg1, Active = true, Visible = false, ZIndex = 40
+	}, gui)
+	corner(StompGui, 14)
+	stroke(StompGui, P.a1, 2, 0.15)
+	new("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), Text = T("تدعيس", "STOMP"),
+		TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBlack, TextSize = 16, ZIndex = 41
+	}, StompGui)
+	local StompBtn = new("TextButton", {
+		Position = UDim2.new(0.08, 0, 0, 36), Size = UDim2.new(0.84, 0, 0, 48),
+		Text = T("دعس", "STOMP"), AutoButtonColor = false, BackgroundColor3 = P.ok,
+		TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBlack, TextSize = 18, ZIndex = 41
+	}, StompGui)
+	corner(StompBtn, 12)
+	local stompTok = 0
+	local function renderStomp()
+		StompBtn.Text = stompRun and T("جاري الدعس...", "STOMPING...") or T("دعس", "STOMP")
+		StompBtn.BackgroundColor3 = stompRun and P.bad or P.ok
+	end
+	StompBtn.MouseButton1Click:Connect(function()
+		if closed or stompRun then return end
+		stompTok = stompTok + 1
+		local my = stompTok
+		stompRun = true
+		renderStomp()
+		task.spawn(function()
+			local endT = os.clock() + 3
+			while not closed and my == stompTok and os.clock() < endT do
+				local ch = lp.Character
+				local hm = ch and ch:FindFirstChildOfClass("Humanoid")
+				local hr = ch and ch:FindFirstChild("HumanoidRootPart")
+				if hm and hr and hm.Health > 0 then
+					hm:MoveTo(hr.Position + hr.CFrame.LookVector * 2.5)
+					task.wait(0.07)
+					local ch2 = lp.Character
+					local hm2 = ch2 and ch2:FindFirstChildOfClass("Humanoid")
+					local hr2 = ch2 and ch2:FindFirstChild("HumanoidRootPart")
+					if hm2 and hr2 and hm2.Health > 0 and my == stompTok then
+						hm2:MoveTo(hr2.Position - hr2.CFrame.LookVector * 2.5)
+					end
+				end
+				task.wait(0.07)
+			end
+			if my == stompTok then stompRun = false end
+			renderStomp()
+		end)
+	end)
+	do
+		local drag, ds, sp = false, nil, nil
+		StompGui.InputBegan:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+				drag, ds, sp = true, i.Position, StompGui.Position
+			end
+		end)
+		table.insert(conns, UserInputService.InputChanged:Connect(function(i)
+			if drag and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then
+				local d = i.Position - ds
+				StompGui.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+			end
+		end))
+		table.insert(conns, UserInputService.InputEnded:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
+		end))
+	end
+	toggle(pExtra, T("تدعيس", "Stomp"), T("زر عائم: كل كبسة تدعس 3 ثواني", "Floating button: each press stomps 3 seconds"), function() return StompGui.Visible end, function(v)
+		StompGui.Visible = v
+		if not v then stompTok = stompTok + 1 stompRun = false renderStomp() end
+	end)
+	slider(pExtra, T("سرعة الضغط (CPS)", "Click speed (CPS)"), 1, 20, 1, function() return clickCPS end, function(v) clickCPS = v end, function(v) return tostring(v) end)
+	toggle(pExtra, T("أوتو كليك", "Auto Click"), T("ضغط تلقائي على الأداة", "Auto activate tool"), function() return autoClick end, function(v) autoClick = v end)
+
+	section(pExtra, "FPS / Ping")
+	local hudOn, hud = false, nil
+	local fpsSmooth = 60
+	table.insert(conns, RunService.Heartbeat:Connect(function(dt)
+		if closed or not hudOn or not hud then return end
+		fpsSmooth = fpsSmooth + (1 / math.max(dt, 1e-4) - fpsSmooth) * 0.1
+		local ping = 0
+		pcall(function() ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
+		hud.Text = string.format("FPS %d  |  PING %d ms", math.floor(fpsSmooth + 0.5), math.floor(ping + 0.5))
+	end))
+	toggle(pExtra, "FPS / Ping HUD", T("عداد أعلى الشاشة", "Counter at the top"), function() return hudOn end, function(v)
+		hudOn = v
+		if v and not hud then
+			hud = new("TextLabel", {
+				Name = "LuxuryHud", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6),
+				Size = UDim2.fromOffset(180, 24), BackgroundColor3 = P.bg0, BackgroundTransparency = 0.25,
+				Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = P.text, Text = "...", ZIndex = 55
+			}, gui)
+			corner(hud, 7)
+			stroke(hud, P.a1, 1, 0.35)
+		end
+		if hud then hud.Visible = v end
+	end)
+end
+
+-- ===================== صفحة الإعدادات =====================
+local pMisc = newPage("misc")
+do
+	section(pMisc, T("الجودة", "QUALITY"))
+	toggle(pMisc, T("جودة سينمائية", "Cinematic quality"), T("ألوان أفضل + إضاءة Future (عندك بس)", "Better colors + Future lighting (client only)"), function() return CINE.on end, function(v)
+		if v then cineApply() else cineRestore() end
+	end)
+	slider(pMisc, "FOV", 70, 120, 1, function() return CINE.fovValue or 70 end, function(v)
+		CINE.fovValue = (v ~= 70) and v or nil
+		local cam = workspace.CurrentCamera
+		if cam then cam.FieldOfView = v end
+	end, function(v) return tostring(math.floor(v + 0.5)) end)
+	table.insert(conns, RunService.RenderStepped:Connect(function()
+		if closed or not CINE.fovValue then return end
+		local cam = workspace.CurrentCamera
+		if cam and math.abs(cam.FieldOfView - CINE.fovValue) > 0.05 then
+			cam.FieldOfView = CINE.fovValue
+		end
+	end))
+
+	section(pMisc, T("الواجهة", "INTERFACE"))
+	local locked = false
+	toggle(pMisc, T("قفل الواجهة", "Lock window"), T("تمنع تحريك النافذة", "Prevents dragging"), function() return locked end, function(v)
+		locked = v
+		main.Draggable = not v
+	end)
+	slider(pMisc, T("حجم الواجهة", "UI size"), 0.6, 1.15, 0.05, function() return WIDGET_SCALE end, function(v)
+		WIDGET_SCALE = v
+		-- يمكن إضافة UIScale لو حاب
+	end, function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end)
+end
+
+-- ===================== صفحة المعلومات =====================
+local pInfo = newPage("info")
+do
+	local function stat(words)
+		local ls = lp:FindFirstChild("leaderstats")
+		if not ls then return "-" end
+		for _, v in ipairs(ls:GetChildren()) do
+			local n = string.lower(v.Name)
+			for _, w in ipairs(words) do
+				if string.find(n, w, 1, true) then
+					local ok, val = pcall(function() return v.Value end)
+					if ok then return tostring(val) end
+				end
+			end
+		end
+		return "-"
+	end
+	local function ping()
+		local ok, v = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
+		return ok and tostring(math.floor(v)) .. " ms" or "-"
+	end
+	local function exec()
+		local ok, n = pcall(function() return identifyexecutor and identifyexecutor() end)
+		return (ok and n) and tostring(n) or "Unknown"
+	end
+	local ROWS = {
+		{"👤", T("اسمك", "Name"), function() return lp.DisplayName end},
+		{"🏷", T("يوزرك", "Username"), function() return lp.Name end},
+		{"🆔", T("الآي دي", "ID"), function() return tostring(lp.UserId) end},
+		{"📅", T("عمر الحساب", "Account age"), function() return tostring(lp.AccountAge) .. T(" يوم", " days") end},
+		{"⚡", T("الهاك", "Executor"), exec},
+		{"🏆", T("فوزاتك", "Wins"), function() return stat({"win", "فوز"}) end},
+		{"⚔", T("قتلاتك", "Kills"), function() return stat({"kill", "قتل", "elim"}) end},
+		{"👥", T("اللاعبين", "Players"), function() return tostring(#Players:GetPlayers()) end},
+		{"📡", T("البينق", "Ping"), ping},
+	}
+	section(pInfo, T("اضغط على أي سطر لنسخ القيمة", "TAP A ROW TO COPY"))
+	local labels = {}
+	for k, r in ipairs(ROWS) do
+		local b = new("TextButton", {
+			Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = P.card, Text = "", AutoButtonColor = false, LayoutOrder = nextOrder(pInfo)
+		}, pInfo)
+		corner(b, 10)
+		stroke(b, P.line, 1, 0.55)
+		local t = new("TextLabel", {
+			BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0),
+			Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = P.text, TextXAlignment = Enum.TextXAlignment.Left, Text = ""
+		}, b)
+		labels[k] = {t = t, v = ""}
+		b.MouseButton1Click:Connect(function()
+			pcall(function() if setclipboard then setclipboard(labels[k].v) end end)
+		end)
+	end
+	local function refresh()
+		for k, r in ipairs(ROWS) do
+			local ok, v = pcall(r[3])
+			labels[k].v = ok and tostring(v) or "-"
+			labels[k].t.Text = r[1] .. "  " .. r[2] .. ":  " .. labels[k].v
+		end
+	end
+	refresh()
+	task.spawn(function()
+		while not closed do
+			task.wait(1.5)
+			if pInfo.Visible then refresh() end
+		end
+	end)
+	note(pInfo, "LUXURY FULL • Mohamed CRA features inside Luxury UI")
+end
+
+-- ===================== أنيميشن فتح / إغلاق =====================
+local function openAnim()
+	main.Visible = true
+	main.Size = UDim2.fromOffset(0, 0)
+	TweenService:Create(main, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(520, 360)}):Play()
+	TweenService:Create(blur, TweenInfo.new(0.45), {Size = 9}):Play()
+	openBtn.Text = "✕  اغلاق"
+	openBtn.BackgroundColor3 = Color3.fromRGB(255, 55, 55)
+end
+
+local function closeAnim()
+	TweenService:Create(main, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.fromOffset(0, 0)}):Play()
+	TweenService:Create(blur, TweenInfo.new(0.35), {Size = 0}):Play()
+	task.wait(0.35)
+	main.Visible = false
+	openBtn.Text = "✨ LUXURY"
+	openBtn.BackgroundColor3 = P.a1
+end
+
+openBtn.MouseButton1Click:Connect(function()
+	if main.Visible then closeAnim() else openAnim() end
+end)
+closeBtn.MouseButton1Click:Connect(closeAnim)
+miniBtn.MouseButton1Click:Connect(closeAnim)
+
+-- تطبيق السكن بعد الـ respawn
+lp.CharacterAdded:Connect(function()
+	if skinActive then
+		task.wait(1.3)
+		task.spawn(doApply)
+	end
+end)
+
+showTab("main")
+openAnim()
+print("[LUXURY FULL] Loaded — All Mohamed CRA features inside Luxury UI")

@@ -1101,7 +1101,7 @@ table.insert(conns, RunService.Heartbeat:Connect(function()
 	end
 end))
 
--- ===================== الواجهة DAZ x 0 =====================
+-- ===================== الواجهة Daz × Mhmd =====================
 local P = {
 	bg0 = Color3.fromHex("#0A0A12"),
 	bg1 = Color3.fromHex("#1A1A2E"),
@@ -1138,7 +1138,7 @@ local function openSnd()
 end
 
 local gui = new("ScreenGui", {
-	Name = "DAZ_x0", ResetOnSpawn = false,
+	Name = "Daz_x_Mhmd", ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true
 }, PlayerGui)
 
@@ -1243,16 +1243,16 @@ new("TextLabel", {
 }, topBar)
 
 local dazBtn = new("TextButton", {
-	Size = UDim2.fromOffset(130, 40), Position = UDim2.new(0.5, -65, 0, 6),
+	Size = UDim2.fromOffset(180, 40), Position = UDim2.new(0.5, -90, 0, 6),
 	BackgroundTransparency = 1, Text = "", ZIndex = 6, AutoButtonColor = false
 }, topBar)
 
 local dazLetters = {}
 local function dazLetter(char, color, x)
 	local l = new("TextLabel", {
-		Size = UDim2.fromOffset(28, 40), Position = UDim2.fromOffset(x, 0),
+		Size = UDim2.fromOffset(24, 40), Position = UDim2.fromOffset(x, 0),
 		BackgroundTransparency = 1, Text = char, Font = Enum.Font.GothamBlack,
-		TextSize = 28, TextColor3 = color, ZIndex = 7
+		TextSize = 24, TextColor3 = color, ZIndex = 7
 	}, dazBtn)
 	new("UIGradient", {
 		Color = ColorSequence.new{
@@ -1264,12 +1264,15 @@ local function dazLetter(char, color, x)
 	table.insert(dazLetters, l)
 	return l
 end
--- DAZ x 0
+-- Daz × Mhmd
 dazLetter("D", Color3.fromRGB(255, 20, 50), 0)
-dazLetter("A", Color3.fromRGB(255, 130, 0), 26)
-dazLetter("Z", Color3.fromRGB(255, 0, 160), 52)
-dazLetter("x", Color3.fromRGB(200, 200, 210), 80)
-dazLetter("0", Color3.fromRGB(255, 80, 120), 102)
+dazLetter("a", Color3.fromRGB(255, 90, 40), 22)
+dazLetter("z", Color3.fromRGB(255, 0, 160), 42)
+dazLetter("×", Color3.fromRGB(255, 200, 80), 64)
+dazLetter("M", Color3.fromRGB(255, 20, 50), 86)
+dazLetter("h", Color3.fromRGB(255, 130, 0), 110)
+dazLetter("m", Color3.fromRGB(255, 80, 140), 130)
+dazLetter("d", Color3.fromRGB(255, 0, 160), 152)
 
 local function makeTopBtn(text, xOff, color)
 	local b = new("TextButton", {
@@ -1313,8 +1316,8 @@ new("UIPadding", {
 
 -- زر عائم بعد التصغير
 local miniFloat = new("TextButton", {
-	Size = UDim2.fromOffset(70, 36), Position = UDim2.new(0.5, -35, 0, 16),
-	Text = "DAZ x 0", Font = Enum.Font.GothamBlack, TextSize = 12,
+	Size = UDim2.fromOffset(110, 36), Position = UDim2.new(0.5, -55, 0, 16),
+	Text = "Daz × Mhmd", Font = Enum.Font.GothamBlack, TextSize = 12,
 	TextColor3 = Color3.new(1, 1, 1), BackgroundColor3 = Color3.fromRGB(15, 15, 15),
 	Visible = false, AutoButtonColor = false, ZIndex = 50
 }, gui)
@@ -2482,23 +2485,24 @@ do
 			if pInfo.Visible then refresh() end
 		end
 	end)
-	note(pInfo, "DAZ x 0 • Assist Tracker + Luxury features")
+	note(pInfo, "Daz × Mhmd • Assist Tracker + Luxury features")
 end
 
 -- ===================== أنيميشن فتح / إغلاق =====================
 local isOpening = false
 
 local function dazShine()
+	local xs = {0, 22, 42, 64, 86, 110, 130, 152}
 	for i, l in ipairs(dazLetters) do
 		task.spawn(function()
-			task.wait((i - 1) * 0.08)
+			task.wait((i - 1) * 0.07)
+			local bx = xs[i] or ((i - 1) * 22)
 			TweenService:Create(l, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				TextSize = 32, Position = UDim2.fromOffset((i == 4 and 80 or i == 5 and 102 or (i - 1) * 26) - 2, -2)
+				TextSize = 28, Position = UDim2.fromOffset(bx - 2, -2)
 			}):Play()
 			task.wait(0.18)
-			local baseX = (i == 4 and 80) or (i == 5 and 102) or ((i - 1) * 26)
 			TweenService:Create(l, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
-				TextSize = 28, Position = UDim2.fromOffset(baseX, 0)
+				TextSize = 24, Position = UDim2.fromOffset(bx, 0)
 			}):Play()
 		end)
 	end
@@ -2585,7 +2589,7 @@ miniBtn.MouseButton1Click:Connect(function()
 	miniFloat.Size = UDim2.fromOffset(50, 28)
 	miniFloat.Rotation = -8
 	TweenService:Create(miniFloat, TweenInfo.new(0.4, Enum.EasingStyle.Back), {
-		Size = UDim2.fromOffset(70, 36), Rotation = 0
+		Size = UDim2.fromOffset(110, 36), Rotation = 0
 	}):Play()
 end)
 
@@ -2608,4 +2612,4 @@ lp.CharacterAdded:Connect(function()
 end)
 
 showTab("main")
-print("[DAZ x 0] Loaded")
+print("[Daz × Mhmd] Loaded")

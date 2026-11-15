@@ -1101,7 +1101,7 @@ table.insert(conns, RunService.Heartbeat:Connect(function()
 	end
 end))
 
--- ===================== الواجهة DAZ x 0 =====================
+-- ===================== الواجهة Daz × Mhmd =====================
 local P = {
 	bg0 = Color3.fromHex("#0A0A12"),
 	bg1 = Color3.fromHex("#1A1A2E"),
@@ -1138,7 +1138,7 @@ local function openSnd()
 end
 
 local gui = new("ScreenGui", {
-	Name = "DAZ_x0", ResetOnSpawn = false,
+	Name = "Daz_x_Mhmd", ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true
 }, PlayerGui)
 
@@ -1243,16 +1243,16 @@ new("TextLabel", {
 }, topBar)
 
 local dazBtn = new("TextButton", {
-	Size = UDim2.fromOffset(130, 40), Position = UDim2.new(0.5, -65, 0, 6),
+	Size = UDim2.fromOffset(180, 40), Position = UDim2.new(0.5, -90, 0, 6),
 	BackgroundTransparency = 1, Text = "", ZIndex = 6, AutoButtonColor = false
 }, topBar)
 
 local dazLetters = {}
 local function dazLetter(char, color, x)
 	local l = new("TextLabel", {
-		Size = UDim2.fromOffset(28, 40), Position = UDim2.fromOffset(x, 0),
+		Size = UDim2.fromOffset(24, 40), Position = UDim2.fromOffset(x, 0),
 		BackgroundTransparency = 1, Text = char, Font = Enum.Font.GothamBlack,
-		TextSize = 28, TextColor3 = color, ZIndex = 7
+		TextSize = 24, TextColor3 = color, ZIndex = 7
 	}, dazBtn)
 	new("UIGradient", {
 		Color = ColorSequence.new{
@@ -1264,12 +1264,15 @@ local function dazLetter(char, color, x)
 	table.insert(dazLetters, l)
 	return l
 end
--- DAZ x 0
+-- Daz × Mhmd
 dazLetter("D", Color3.fromRGB(255, 20, 50), 0)
-dazLetter("A", Color3.fromRGB(255, 130, 0), 26)
-dazLetter("Z", Color3.fromRGB(255, 0, 160), 52)
-dazLetter("x", Color3.fromRGB(200, 200, 210), 80)
-dazLetter("0", Color3.fromRGB(255, 80, 120), 102)
+dazLetter("a", Color3.fromRGB(255, 90, 40), 22)
+dazLetter("z", Color3.fromRGB(255, 0, 160), 42)
+dazLetter("×", Color3.fromRGB(255, 200, 80), 64)
+dazLetter("M", Color3.fromRGB(255, 20, 50), 86)
+dazLetter("h", Color3.fromRGB(255, 130, 0), 110)
+dazLetter("m", Color3.fromRGB(255, 80, 140), 130)
+dazLetter("d", Color3.fromRGB(255, 0, 160), 152)
 
 local function makeTopBtn(text, xOff, color)
 	local b = new("TextButton", {
@@ -1313,8 +1316,8 @@ new("UIPadding", {
 
 -- زر عائم بعد التصغير
 local miniFloat = new("TextButton", {
-	Size = UDim2.fromOffset(70, 36), Position = UDim2.new(0.5, -35, 0, 16),
-	Text = "DAZ x 0", Font = Enum.Font.GothamBlack, TextSize = 12,
+	Size = UDim2.fromOffset(110, 36), Position = UDim2.new(0.5, -55, 0, 16),
+	Text = "Daz × Mhmd", Font = Enum.Font.GothamBlack, TextSize = 12,
 	TextColor3 = Color3.new(1, 1, 1), BackgroundColor3 = Color3.fromRGB(15, 15, 15),
 	Visible = false, AutoButtonColor = false, ZIndex = 50
 }, gui)
@@ -1644,15 +1647,301 @@ do
 		st.jump = v
 		MohamedAssist.SetJump(v)
 	end)
-	toggle(pMain, T("بدون تعلق بالجدران", "No wall stick"), T("يمنعك تقرب من الجدار أكتر من المسافة", "Stops you from getting too close to walls"), function() return st.stick end, function(v)
-		st.stick = v
-		MohamedAssist.SetAntiStick(v)
-	end)
-	slider(pMain, T("مسافة الجدار (1-10)", "Wall distance (1-10)"), 1, 10, 1, function() return st.wallDist end, function(v)
-		st.wallDist = v
-		MohamedAssist.SetWallDist(v)
-	end, function(v) return tostring(v) end)
-	note(pMain, T("الأوتو والقراب والنط شغالين من فوق. للمطاردة استخدم أسست تراكر تحت.", "Auto/Grab/Jump above. For chase use Assist Tracker below."))
+	local wallSlideLoaded = false
+	button(pMain, "🧱  " .. T("تشغيل سلايد الجدران", "Start Wall Slide"), function()
+		if wallSlideLoaded then return end
+		wallSlideLoaded = true
+		pcall(function()
+			loadstring([[
+local players = game:GetService("Players")
+local runService = game:GetService("RunService")
+local localPlayer = players.LocalPlayer
+local flag = false
+local raycastParams = RaycastParams.new()
+
+local function f1()
+  raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+end
+
+if not pcall(f1) then
+  raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+end
+
+local function getUnit(p1)
+  local vector = Vector3.new(p1.X, 0, p1.Z)
+  return vector.Magnitude > 0.001 and vector.Unit or Vector3.new(0, 0, 0)
+end
+
+raycastParams.IgnoreWater = true
+local instance
+
+local function f2()
+  if instance then
+    pcall(function() instance:Destroy() end)
+    instance = nil
+  end
+end
+
+local waitForChild
+
+local function f3()
+  f2()
+
+  if waitForChild and waitForChild.Parent then
+    waitForChild.AutoRotate = true
+  end
+end
+
+local function getUnit2(vector2, vector3)
+  return vector2.Magnitude > 0.001 and vector2.Unit or vector3
+end
+
+local waitForChild2, slideAtt
+
+local function makeVelocity()
+  if not waitForChild2 or not slideAtt then
+    return nil
+  end
+
+  local ok, result = pcall(function()
+    local slideVel = Instance.new("LinearVelocity")
+    slideVel.Name = "SlideVel"
+    slideVel.Attachment0 = slideAtt
+    slideVel.RelativeTo = Enum.ActuatorRelativeTo.World
+    slideVel.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+    slideVel.MaxForce = 100000
+
+    pcall(function()
+      slideVel.ForceLimitsEnabled = true
+      slideVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+      slideVel.MaxAxesForce = Vector3.new(100000, 0, 100000)
+    end)
+
+    slideVel.Parent = waitForChild2
+    return slideVel
+  end)
+
+  if ok and result then
+    return result
+  end
+
+  local ok2, result2 = pcall(function()
+    local slideVel2 = Instance.new("BodyVelocity")
+    slideVel2.Name = "SlideVel"
+    slideVel2.MaxForce = Vector3.new(100000, 0, 100000)
+    slideVel2.P = 1250
+    slideVel2.Parent = waitForChild2
+
+    return slideVel2
+  end)
+
+  return ok2 and result2 or nil
+end
+
+local function f4(p2)
+  if not waitForChild2 then
+    return nil
+  end
+
+  local list = {}
+  local vector4 = Vector3.new(-p2.Z, 0, p2.X)
+  local position = waitForChild2.Position
+  local v1 = { position, position + vector4 * 0.25, position - vector4 * 0.25 }
+
+  for index, value in ipairs({
+    p2, getUnit2(p2 + vector4 * 0.25, p2), getUnit2(p2 - vector4 * 0.25, p2),
+  }) do
+    local raycast = workspace:Raycast(v1[index], value * 1.35, raycastParams)
+
+    if raycast and raycast.Instance and raycast.Instance:IsA("BasePart")
+      and raycast.Instance.CanCollide and math.abs(raycast.Normal.Y) <= 0.3 then
+      local unit = getUnit(raycast.Normal)
+
+      if unit.Magnitude > 0.001 and p2:Dot(unit) < -0.01 then
+        table.insert(list, unit)
+      end
+    end
+  end
+
+  if #list == 0 then
+    return nil
+  end
+
+  local vector5 = Vector3.new(0, 0, 0)
+
+  for _, value2 in ipairs(list) do
+    vector5 = vector5 + value2
+  end
+
+  return getUnit2(vector5, list[1])
+end
+
+local instance2
+
+local function makeAttachment(character)
+  f3()
+
+  if slideAtt then
+    pcall(function() slideAtt:Destroy() end)
+    slideAtt = nil
+  end
+
+  instance2 = character
+  waitForChild = character:WaitForChild("Humanoid", 5)
+  waitForChild2 = character:WaitForChild("HumanoidRootPart", 5)
+
+  if not waitForChild or not waitForChild2 then
+    return
+  end
+
+  for _, value3 in ipairs({ "SlideVel", "SlideAtt" }) do
+    local findFirstChild = waitForChild2:FindFirstChild(value3)
+
+    if findFirstChild then
+      pcall(function() findFirstChild:Destroy() end)
+    end
+  end
+
+  slideAtt = Instance.new("Attachment")
+  slideAtt.Name = "SlideAtt"
+  slideAtt.Parent = waitForChild2
+end
+
+local function f5()
+  if not flag then
+    return
+  end
+
+  if not instance2 or not instance2.Parent or not waitForChild or waitForChild.Health <= 0
+    or not waitForChild2 or not waitForChild2.Parent then
+    f3()
+    return
+  end
+
+  local filterDescendantsInstances = {}
+
+  for _, value4 in ipairs(players:GetPlayers()) do
+    if value4.Character then
+      table.insert(filterDescendantsInstances, value4.Character)
+    end
+  end
+
+  raycastParams.FilterDescendantsInstances = filterDescendantsInstances
+  local unit2 = getUnit(waitForChild.MoveDirection)
+
+  if unit2.Magnitude < 0.08 then
+    f3()
+    return
+  end
+
+  local v2 = f4(unit2)
+
+  if not v2 then
+    f3()
+    return
+  end
+
+  local velocity = waitForChild2.Velocity
+  local v3 = waitForChild.FloorMaterial ~= Enum.Material.Air and 0
+
+  local lowest = v3
+  lowest = v3 or math.min(velocity.Y, 1.5)
+
+  if math.abs(lowest - velocity.Y) > 0.01 then
+    waitForChild2.Velocity = Vector3.new(velocity.X, lowest, velocity.Z)
+  end
+
+  if not instance or not instance.Parent then
+    instance = makeVelocity()
+  end
+
+  if not instance then
+    return
+  end
+
+  local unit3 = getUnit(unit2 - v2 * unit2:Dot(v2))
+  local v4 = unit3.Magnitude > 0.05 and unit3
+
+  local v5 = v4
+  v5 = v4 or getUnit2(Vector3.new(-v2.Z, 0, v2.X), Vector3.new(1, 0, 0))
+
+  local vector6 = Vector3.new(
+    (v5 * waitForChild.WalkSpeed + v2 * 0.01).X, 0, (v5 * waitForChild.WalkSpeed + v2 * 0.01).Z
+  )
+
+  if instance:IsA("LinearVelocity") then
+    instance.VectorVelocity = vector6
+  elseif instance:IsA("BodyVelocity") then
+    instance.Velocity = vector6
+  end
+
+  waitForChild.AutoRotate = true
+end
+
+local f6
+
+local function f7()
+  flag = false
+  f6()
+  f3()
+
+  if slideAtt then
+    pcall(function() slideAtt:Destroy() end)
+    slideAtt = nil
+  end
+
+  instance2 = nil
+  waitForChild = nil
+  waitForChild2 = nil
+end
+
+local connect, connect2
+
+function f6()
+  if connect then
+    pcall(function() connect:Disconnect() end)
+    connect = nil
+  end
+
+  if connect2 then
+    pcall(function() connect2:Disconnect() end)
+    connect2 = nil
+  end
+end
+
+local function f8()
+  flag = true
+
+  if localPlayer.Character then
+    makeAttachment(localPlayer.Character)
+  end
+
+  connect = localPlayer.CharacterAdded:Connect(function(character2)
+    pcall(function()
+      task.wait(0.15)
+
+      if flag then
+        makeAttachment(character2)
+      end
+    end)
+  end)
+
+  connect2 = runService.Heartbeat:Connect(function()
+    local ok3, result3 = pcall(f5)
+
+    if not ok3 then
+      f7()
+      warn("[Wall Slide] stopped safely: " .. tostring(result3))
+    end
+  end)
+end
+
+f8()
+
+			]])()
+		end)
+	end, Color3.fromRGB(40, 70, 90))
+	note(pMain, T("الأوتو والقراب والنط من فوق. سلايد الجدران وأسست تراكر من الأزرار.", "Auto/Grab/Jump above. Wall slide and tracker from the buttons."))
 
 	-- ===== أسست تراكر + فليك/نظر/أسيست =====
 	section(pMain, T("أدوات إضافية", "EXTRA TOOLS"))
@@ -2482,23 +2771,24 @@ do
 			if pInfo.Visible then refresh() end
 		end
 	end)
-	note(pInfo, "DAZ x 0 • Assist Tracker + Luxury features")
+	note(pInfo, "Daz × Mhmd • Assist Tracker + Luxury features")
 end
 
 -- ===================== أنيميشن فتح / إغلاق =====================
 local isOpening = false
 
 local function dazShine()
+	local xs = {0, 22, 42, 64, 86, 110, 130, 152}
 	for i, l in ipairs(dazLetters) do
 		task.spawn(function()
-			task.wait((i - 1) * 0.08)
+			task.wait((i - 1) * 0.07)
+			local bx = xs[i] or ((i - 1) * 22)
 			TweenService:Create(l, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				TextSize = 32, Position = UDim2.fromOffset((i == 4 and 80 or i == 5 and 102 or (i - 1) * 26) - 2, -2)
+				TextSize = 28, Position = UDim2.fromOffset(bx - 2, -2)
 			}):Play()
 			task.wait(0.18)
-			local baseX = (i == 4 and 80) or (i == 5 and 102) or ((i - 1) * 26)
 			TweenService:Create(l, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
-				TextSize = 28, Position = UDim2.fromOffset(baseX, 0)
+				TextSize = 24, Position = UDim2.fromOffset(bx, 0)
 			}):Play()
 		end)
 	end
@@ -2585,7 +2875,7 @@ miniBtn.MouseButton1Click:Connect(function()
 	miniFloat.Size = UDim2.fromOffset(50, 28)
 	miniFloat.Rotation = -8
 	TweenService:Create(miniFloat, TweenInfo.new(0.4, Enum.EasingStyle.Back), {
-		Size = UDim2.fromOffset(70, 36), Rotation = 0
+		Size = UDim2.fromOffset(110, 36), Rotation = 0
 	}):Play()
 end)
 
@@ -2608,4 +2898,4 @@ lp.CharacterAdded:Connect(function()
 end)
 
 showTab("main")
-print("[DAZ x 0] Loaded")
+print("[Daz × Mhmd] Loaded")

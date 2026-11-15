@@ -1,0 +1,64 @@
+-- إنشاء الواجهة الأساسية
+local ScreenGui = Instance.new("ScreenGui")
+local ToggleBtn = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+-- ربط الواجهة بالشاشة
+ScreenGui.Name = "CleanBombFireGUI"
+ScreenGui.Parent = game.CoreGui
+
+-- إعداد شكل ومكان الزر
+ToggleBtn.Name = "ToggleBtn"
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+ToggleBtn.Position = UDim2.new(0.45, 0, 0.15, 0)
+ToggleBtn.Size = UDim2.new(0, 210, 0, 45)
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Text = "مسح نار القمبله"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextSize = 15
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true -- يتيح لك تحريك الزر في أي مكان على الشاشة
+
+-- إضافة حواف دائرية
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = ToggleBtn
+
+-- متغير للتحكم في حالة التفعيل
+local isActive = false
+local connection = nil
+
+-- دالة فحص وحذف أي عنصر مؤثر
+local function removeEffect(obj)
+    if not obj or not obj.Parent then return end
+    
+    -- التحقق من نوع المؤثر وحذفه
+    if obj:IsA("ParticleEmitter") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Explosion") or obj:IsA("Trail") or obj:IsA("Beam") then
+        obj:Destroy()
+    -- التحقق من مجلدات المؤثرات وحذف محتواها
+    elseif obj.Name:lower() == "particles" or obj.Name:lower() == "effects" then
+        obj:ClearAllChildren()
+    end
+end
+
+-- برمجة الزر للتفعيل المستمر
+ToggleBtn.MouseButton1Click:Connect(function()
+    if isActive then return end -- يعمل مرة واحدة ويستمر حتى الخروج من الماب
+    isActive = true
+    
+    -- تغيير شكل الزر لتأكيد التفعيل الدائم
+    ToggleBtn.Text = "مسح نار القمبله: مفعل ✓"
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 180, 100)
+    
+    -- 1. مسح كل المؤثرات الموجودة حالياً في الماب
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        removeEffect(obj)
+    end
+    
+    -- 2. مراقبة الماب وحذف أي مؤثر جديد يظهر فوراً حتى تخرج
+    connection = workspace.DescendantAdded:Connect(function(newObj)
+        task.defer(function()
+            removeEffect(newObj)
+        end)
+    end)
+end)

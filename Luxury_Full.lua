@@ -1132,7 +1132,7 @@ local openGrad = new("UIGradient", {Color = ColorSequence.new(P.a1, P.a2), Rotat
 
 -- النافذة الرئيسية
 local main = new("Frame", {
-	Size = UDim2.fromOffset(720, 460), Position = UDim2.new(0.5, -360, 0.5, -230),
+	Size = UDim2.fromOffset(660, 420), Position = UDim2.new(0.5, -330, 0.5, -210),
 	BackgroundColor3 = P.bg0, BackgroundTransparency = 0.08, Active = true, Visible = false, ZIndex = 10
 }, gui)
 corner(main, 20)
@@ -1179,7 +1179,7 @@ corner(miniBtn, 8)
 
 -- الشريط الجانبي
 local side = new("Frame", {
-	Position = UDim2.fromOffset(12, 60), Size = UDim2.fromOffset(150, 385),
+	Position = UDim2.fromOffset(12, 58), Size = UDim2.fromOffset(145, 350),
 	BackgroundColor3 = P.card, BackgroundTransparency = 0.2
 }, main)
 corner(side, 14)
@@ -1195,7 +1195,7 @@ new("UIPadding", {PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), Pad
 local pages, tabBtns = {}, {}
 local function newPage(id)
 	local f = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(172, 60), Size = UDim2.new(1, -184, 1, -72),
+		Position = UDim2.fromOffset(165, 58), Size = UDim2.new(1, -177, 1, -68),
 		BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
 		ScrollBarImageColor3 = P.a1, AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(), Visible = false, ScrollingDirection = Enum.ScrollingDirection.Y
@@ -1485,6 +1485,589 @@ do
 		MohamedAssist.SetWallDist(v)
 	end, function(v) return tostring(v) end)
 	note(pMain, T("كل الميزات مطفية لين تشغلها بنفسك. لو حركت بيدك الأسيست يوقف ويكمل لما تشيل يدك.", "Everything is off until you enable it. Manual movement pauses Assist."))
+
+	-- ===== أدوات إضافية: أسست تراكر + Device Spoof =====
+	section(pMain, T("أدوات إضافية", "EXTRA TOOLS"))
+
+	local trackerLoaded = false
+	button(pMain, "🎯  " .. T("أسست تراكر (أفضل)", "Better Assist Tracker"), function()
+		if trackerLoaded then return end
+		trackerLoaded = true
+		pcall(function()
+			loadstring([[
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local localPlayer = Players.LocalPlayer
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "TimeBombChaser"
+screenGui.ResetOnSpawn = false
+local parentContainer = (gethui and gethui()) or game:GetService("CoreGui") or localPlayer:FindFirstChildOfClass("PlayerGui")
+screenGui.Parent = parentContainer
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 150, 0, 70)
+frame.Position = UDim2.new(0.5, -75, 0.4, 0)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+local autoButton = Instance.new("TextButton")
+autoButton.Size = UDim2.new(0, 120, 0, 40)
+autoButton.Position = UDim2.new(0.5, -60, 0.5, -20)
+autoButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+autoButton.Text = "Auto: OFF"
+autoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+autoButton.Font = Enum.Font.GothamBold
+autoButton.TextSize = 16
+autoButton.Parent = frame
+Instance.new("UICorner", autoButton).CornerRadius = UDim.new(0, 8)
+
+local isAutoEnabled = false
+local chaseConnection = nil
+local closestTarget = nil
+local lastCheckTime = 0
+local CHECK_INTERVAL = 0.05
+
+local function isTeammateOrGreen(targetPlayer)
+	if localPlayer.Team and targetPlayer.Team == localPlayer.Team then return true end
+	local character = targetPlayer.Character
+	if not character then return false end
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Highlight") then
+			local color = child.FillColor or child.OutlineColor
+			if color and color.G > 0.5 and color.R < 0.4 and color.B < 0.4 then return true end
+		elseif child:IsA("SelectionBox") or child:IsA("BoxHandleAdornment") then
+			local color = child.Color3
+			if color and color.G > 0.5 and color.R < 0.4 and color.B < 0.4 then return true end
+		end
+	end
+	local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Head")
+	if root then
+		for _, obj in ipairs(root:GetChildren()) do
+			if obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("ParticleEmitter") then
+				local color = obj.Color
+				if typeof(color) == "ColorSequence" then color = color.Keypoints[1].Value end
+				if color and color.G > 0.5 and color.R < 0.4 and color.B < 0.4 then return true end
+			end
+		end
+	end
+	return false
+end
+
+local function updateClosestTarget()
+	local myChar = localPlayer.Character
+	if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then closestTarget = nil return end
+	local myPos = myChar.HumanoidRootPart.Position
+	local shortestDistance = math.huge
+	local tempTarget = nil
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= localPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChildOfClass("Humanoid") then
+			if p.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+				if not isTeammateOrGreen(p) then
+					local dist = (p.Character.HumanoidRootPart.Position - myPos).Magnitude
+					if dist < shortestDistance then
+						shortestDistance = dist
+						tempTarget = p
+					end
+				end
+			end
+		end
+	end
+	closestTarget = tempTarget
+end
+
+local function hasTool()
+	local inHand = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Tool")
+	local inBackpack = localPlayer.Backpack:FindFirstChildOfClass("Tool")
+	return (inHand or inBackpack)
+end
+
+local function startChasing()
+	chaseConnection = RunService.Heartbeat:Connect(function()
+		if not isAutoEnabled then return end
+		local myChar = localPlayer.Character
+		if myChar and myChar:FindFirstChild("Humanoid") and myChar:FindFirstChild("HumanoidRootPart") then
+			local myHumanoid = myChar.Humanoid
+			local currentTime = os.clock()
+			if currentTime - lastCheckTime >= CHECK_INTERVAL then
+				lastCheckTime = currentTime
+				updateClosestTarget()
+			end
+			if hasTool() and closestTarget and closestTarget.Character and closestTarget.Character:FindFirstChild("HumanoidRootPart") then
+				myHumanoid:MoveTo(closestTarget.Character.HumanoidRootPart.Position)
+			else
+				myHumanoid:MoveTo(myChar.HumanoidRootPart.Position)
+			end
+		end
+	end)
+end
+
+local function stopChasing()
+	if chaseConnection then chaseConnection:Disconnect() chaseConnection = nil end
+	closestTarget = nil
+	local myChar = localPlayer.Character
+	if myChar and myChar:FindFirstChild("Humanoid") and myChar:FindFirstChild("HumanoidRootPart") then
+		myChar.Humanoid:MoveTo(myChar.HumanoidRootPart.Position)
+	end
+end
+
+autoButton.MouseButton1Click:Connect(function()
+	isAutoEnabled = not isAutoEnabled
+	if isAutoEnabled then
+		autoButton.Text = "Auto: ON"
+		autoButton.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+		startChasing()
+	else
+		autoButton.Text = "Auto: OFF"
+		autoButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+		stopChasing()
+	end
+end)
+			]])()
+		end)
+	end, Color3.fromRGB(40, 90, 50))
+
+	local spoofLoaded = false
+	button(pMain, "📱  " .. T("تغيير الجهاز (Device Spoof)", "Device Spoof"), function()
+		if spoofLoaded then return end
+		spoofLoaded = true
+		pcall(function()
+			-- نقرأ كود Device Spoof من المرفق ونشغله
+			local src = game:HttpGet("https://raw.githubusercontent.com/placeholder") -- fallback
+			-- نستخدم الكود المضمّن مباشرة
+			loadstring([=[
+local SCRIPT_SOURCE = [==[
+local Players           = game:GetService("Players")
+local TweenService      = game:GetService("TweenService")
+local TeleportService   = game:GetService("TeleportService")
+local UserInputService  = game:GetService("UserInputService")
+local GuiService        = game:GetService("GuiService")
+
+local queueOnTeleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+
+local function setTargetDevice(device)
+  _G.TargetDevice = device
+  if writefile then pcall(writefile, "sys_cfg_v5_cache.bin", device) end
+end
+local function getTargetDevice() return _G.TargetDevice end
+local function randomName(len)
+  local t = ""
+  for i = 1, (len or 12) do t = t .. string.char(math.random(97, 122)) end
+  return t
+end
+
+local Profiles = {
+  Mobile = { TouchEnabled = true, KeyboardEnabled = false, MouseEnabled = false, GamepadEnabled = false, AccelerometerEnabled = true, GyroscopeEnabled = true, VREnabled = false, IsTenFootInterface = false },
+  Console = { TouchEnabled = false, KeyboardEnabled = false, MouseEnabled = false, GamepadEnabled = true, AccelerometerEnabled = false, GyroscopeEnabled = false, VREnabled = false, IsTenFootInterface = true },
+  PC = { TouchEnabled = false, KeyboardEnabled = true, MouseEnabled = true, GamepadEnabled = false, AccelerometerEnabled = false, GyroscopeEnabled = false, VREnabled = false, IsTenFootInterface = false },
+}
+local ActiveProfile = nil
+local Hooked = false
+
+local function FixShiftLock()
+  local lp = Players.LocalPlayer
+  if not lp then return end
+  local pg = lp:FindFirstChild("PlayerGui") or lp:FindFirstChildOfClass("PlayerGui")
+  if not pg then pcall(function() pg = lp:WaitForChild("PlayerGui", 3) end) end
+  if not pg then return end
+  local function forceVisible(obj)
+    if not obj then return end
+    pcall(function()
+      if obj:IsA("GuiObject") then
+        obj.Visible = true
+        if obj:IsA("ImageButton") or obj:IsA("TextButton") or obj:IsA("ImageLabel") then obj.Active = true end
+      end
+    end)
+    for _, child in ipairs(obj:GetChildren()) do forceVisible(child) end
+  end
+  pcall(function()
+    for _, gui in ipairs(pg:GetChildren()) do
+      local name = string.lower(gui.Name)
+      if string.find(name, "shift") or string.find(name, "mouselock") or string.find(name, "lock") then forceVisible(gui) end
+      for _, desc in ipairs(gui:GetDescendants()) do
+        local dname = string.lower(desc.Name)
+        if string.find(dname, "shiftlock") or string.find(dname, "mouselock") or dname == "toggle" then
+          if desc:IsA("GuiObject") then
+            desc.Visible = true
+            if desc:IsA("GuiButton") then desc.Active = true end
+          end
+        end
+      end
+    end
+  end)
+  pcall(function()
+    local screen = pg:FindFirstChild("Screen") or pg:FindFirstChildWhichIsA("ScreenGui")
+    if screen then
+      local shift = screen:FindFirstChild("ShiftLockArea", true) or screen:FindFirstChild("ShiftLock", true)
+      if shift then
+        forceVisible(shift)
+        local toggle = shift:FindFirstChild("Toggle") or shift:FindFirstChildWhichIsA("GuiButton")
+        if toggle then toggle.Visible = true toggle.Active = true end
+      end
+    end
+  end)
+  pcall(function()
+    local core = game:GetService("CoreGui")
+    for _, v in ipairs(core:GetDescendants()) do
+      local n = string.lower(v.Name)
+      if (string.find(n, "shiftlock") or string.find(n, "mouselockcontroller")) and v:IsA("GuiObject") then v.Visible = true end
+    end
+  end)
+end
+
+local function ApplyDevice(device)
+  local profile = Profiles[device]
+  if not profile then return false end
+  ActiveProfile = profile
+  setTargetDevice(device)
+  if not Hooked and typeof(hookmetamethod) == "function" then
+    local oldIndex
+    oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+      if ActiveProfile then
+        if rawequal(self, UserInputService) then
+          local val = ActiveProfile[key]
+          if val ~= nil then return val end
+          if key == "GetConnectedGamepads" then
+            return function()
+              if ActiveProfile.GamepadEnabled then return { Enum.UserInputType.Gamepad1 } end
+              return {}
+            end
+          end
+          if key == "GetDeviceAcceleration" or key == "GetDeviceGravity" or key == "GetDeviceRotation" then
+            if not ActiveProfile.AccelerometerEnabled then return function() return Vector3.zero end end
+          end
+        elseif rawequal(self, GuiService) then
+          if key == "IsTenFootInterface" then
+            return function() return ActiveProfile.IsTenFootInterface end
+          end
+        end
+      end
+      return oldIndex(self, key)
+    end))
+    Hooked = true
+  end
+  if typeof(getgc) == "function" then
+    task.spawn(function()
+      local ok, objs = pcall(getgc, true)
+      if not ok or type(objs) ~= "table" then return end
+      for i = 1, math.min(#objs, 180000) do
+        local obj = objs[i]
+        if type(obj) == "table" then
+          pcall(function()
+            local d = rawget(obj, "Device")
+            if d == "Mobile" or d == "PC" or d == "Console" or d == "Desktop" then rawset(obj, "Device", device) end
+            local p = rawget(obj, "Platform")
+            if p == "Mobile" or p == "PC" or p == "Console" or p == "Desktop" or p == "Phone" then rawset(obj, "Platform", device) end
+            if rawget(obj, "IsMobile") ~= nil then rawset(obj, "IsMobile", device == "Mobile") end
+            if rawget(obj, "IsConsole") ~= nil then rawset(obj, "IsConsole", device == "Console") end
+            if rawget(obj, "IsPC") ~= nil or rawget(obj, "IsDesktop") ~= nil then
+              rawset(obj, "IsPC", device == "PC")
+              rawset(obj, "IsDesktop", device == "PC")
+            end
+          end)
+        end
+      end
+    end)
+  end
+  task.defer(FixShiftLock)
+  task.delay(0.5, FixShiftLock)
+  task.delay(1.5, FixShiftLock)
+  return true
+end
+
+local function getGuiParent()
+  if typeof(gethui) == "function" then local ok, ui = pcall(gethui) if ok and ui then return ui end end
+  if typeof(get_hidden_gui) == "function" then local ok, ui = pcall(get_hidden_gui) if ok and ui then return ui end end
+  local cg = game:GetService("CoreGui")
+  return cg:FindFirstChild("RobloxGui") or (Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui"))
+end
+
+local function main()
+  if not game:IsLoaded() then game.Loaded:Wait() end
+  local platforms = {"Mobile", "Console", "PC"}
+  local display = { Mobile = "📱  Mobile", Console = "🎮  Console", PC = "💻  PC" }
+  if typeof(readfile) == "function" then
+    local ok, saved = pcall(readfile, "sys_cfg_v5_cache.bin")
+    if ok and Profiles[saved] then _G.TargetDevice = saved ApplyDevice(saved) end
+  end
+  task.spawn(function()
+    while true do
+      local d = getTargetDevice()
+      if d then ApplyDevice(d) end
+      FixShiftLock()
+      task.wait(2.5)
+    end
+  end)
+
+  local guiParent = getGuiParent()
+  local targetDevice = getTargetDevice()
+  local pendingDevice = nil
+  local panelOpen = false
+
+  local gui = Instance.new("ScreenGui")
+  gui.Name = randomName()
+  gui.ResetOnSpawn = false
+  gui.IgnoreGuiInset = true
+  gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+  gui.Parent = guiParent
+
+  local px = Instance.new("TextButton")
+  px.Size = UDim2.fromOffset(44, 44)
+  px.Position = UDim2.new(0, 16, 0.5, -22)
+  px.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+  px.Text = "🔒"
+  px.TextColor3 = Color3.fromRGB(255, 200, 80)
+  px.TextSize = 18
+  px.Font = Enum.Font.GothamBold
+  px.AutoButtonColor = false
+  px.Active = true
+  px.Draggable = true
+  px.Parent = gui
+  Instance.new("UICorner", px).CornerRadius = UDim.new(1, 0)
+  local pxStroke = Instance.new("UIStroke")
+  pxStroke.Color = Color3.fromRGB(255, 180, 50)
+  pxStroke.Transparency = 0.4
+  pxStroke.Thickness = 1.5
+  pxStroke.Parent = px
+
+  local panel = Instance.new("Frame")
+  panel.Size = UDim2.fromOffset(280, 260)
+  panel.Position = UDim2.new(0.5, -140, 0.5, -130)
+  panel.BackgroundColor3 = Color3.fromRGB(8, 8, 12)
+  panel.BorderSizePixel = 0
+  panel.Visible = false
+  panel.ClipsDescendants = true
+  panel.Parent = gui
+  Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 18)
+  local panelStroke = Instance.new("UIStroke")
+  panelStroke.Color = Color3.fromRGB(40, 40, 55)
+  panelStroke.Transparency = 0.3
+  panelStroke.Thickness = 1.2
+  panelStroke.Parent = panel
+
+  local topBar = Instance.new("Frame")
+  topBar.Size = UDim2.new(0, 40, 0, 3)
+  topBar.Position = UDim2.new(0.5, -20, 0, 8)
+  topBar.BackgroundColor3 = Color3.fromRGB(0, 140, 255)
+  topBar.BorderSizePixel = 0
+  topBar.Parent = panel
+  Instance.new("UICorner", topBar).CornerRadius = UDim.new(1, 0)
+
+  local header = Instance.new("Frame")
+  header.Size = UDim2.new(1, -24, 0, 42)
+  header.Position = UDim2.fromOffset(12, 18)
+  header.BackgroundTransparency = 1
+  header.Parent = panel
+
+  local lockBtn = Instance.new("TextButton")
+  lockBtn.Size = UDim2.fromOffset(32, 32)
+  lockBtn.Position = UDim2.fromOffset(0, 5)
+  lockBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+  lockBtn.Text = "🔒"
+  lockBtn.TextSize = 14
+  lockBtn.TextColor3 = Color3.fromRGB(255, 200, 80)
+  lockBtn.Font = Enum.Font.GothamBold
+  lockBtn.AutoButtonColor = false
+  lockBtn.Parent = header
+  Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(1, 0)
+
+  local title = Instance.new("TextLabel")
+  title.Size = UDim2.new(1, -80, 1, 0)
+  title.Position = UDim2.fromOffset(40, 0)
+  title.BackgroundTransparency = 1
+  title.Text = "Kami Hub"
+  title.TextColor3 = Color3.fromRGB(255, 255, 255)
+  title.TextSize = 18
+  title.Font = Enum.Font.GothamBold
+  title.TextXAlignment = Enum.TextXAlignment.Center
+  title.Parent = header
+
+  local closeBtn = Instance.new("TextButton")
+  closeBtn.Size = UDim2.fromOffset(32, 32)
+  closeBtn.Position = UDim2.new(1, -32, 0, 5)
+  closeBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+  closeBtn.Text = "⏸"
+  closeBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+  closeBtn.TextSize = 14
+  closeBtn.Font = Enum.Font.GothamMedium
+  closeBtn.AutoButtonColor = false
+  closeBtn.Parent = header
+  Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(1, 0)
+
+  local status = Instance.new("TextLabel")
+  status.Size = UDim2.new(1, -28, 0, 18)
+  status.Position = UDim2.fromOffset(14, 64)
+  status.BackgroundTransparency = 1
+  status.Text = targetDevice and ("Active → " .. (display[targetDevice] or targetDevice)) or "Select a device"
+  status.TextColor3 = Color3.fromRGB(100, 170, 255)
+  status.TextSize = 12
+  status.Font = Enum.Font.GothamMedium
+  status.TextXAlignment = Enum.TextXAlignment.Left
+  status.Parent = panel
+
+  local list = Instance.new("Frame")
+  list.Size = UDim2.new(1, -28, 0, 160)
+  list.Position = UDim2.fromOffset(14, 90)
+  list.BackgroundTransparency = 1
+  list.Parent = panel
+  local layout = Instance.new("UIListLayout")
+  layout.Padding = UDim.new(0, 10)
+  layout.Parent = list
+
+  local rows = {}
+  local function createToggle(parent, isOn)
+    local track = Instance.new("Frame")
+    track.Size = UDim2.fromOffset(46, 26)
+    track.Position = UDim2.new(1, -50, 0.5, -13)
+    track.BackgroundColor3 = isOn and Color3.fromRGB(0, 120, 255) or Color3.fromRGB(55, 55, 65)
+    track.BorderSizePixel = 0
+    track.Parent = parent
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    local thumb = Instance.new("Frame")
+    thumb.Size = UDim2.fromOffset(20, 20)
+    thumb.Position = isOn and UDim2.new(1, -23, 0.5, -10) or UDim2.new(0, 3, 0.5, -10)
+    thumb.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    thumb.BorderSizePixel = 0
+    thumb.Parent = track
+    Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
+    return track, thumb
+  end
+  local function setToggleState(track, thumb, isOn, animate)
+    local trackColor = isOn and Color3.fromRGB(0, 120, 255) or Color3.fromRGB(55, 55, 65)
+    local thumbPos = isOn and UDim2.new(1, -23, 0.5, -10) or UDim2.new(0, 3, 0.5, -10)
+    if animate then
+      TweenService:Create(track, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {BackgroundColor3 = trackColor}):Play()
+      TweenService:Create(thumb, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {Position = thumbPos}):Play()
+    else
+      track.BackgroundColor3 = trackColor
+      thumb.Position = thumbPos
+    end
+  end
+  local function refresh()
+    for name, row in pairs(rows) do
+      local isActive = (name == targetDevice)
+      local isPending = (name == pendingDevice)
+      if isPending then
+        row.Btn.BackgroundColor3 = Color3.fromRGB(35, 25, 10)
+        row.Indicator.BackgroundColor3 = Color3.fromRGB(255, 160, 40)
+        row.Text.Text = "Confirm rejoin?"
+        row.Text.TextColor3 = Color3.fromRGB(255, 200, 100)
+        setToggleState(row.Track, row.Thumb, true, true)
+      elseif isActive then
+        row.Btn.BackgroundColor3 = Color3.fromRGB(12, 18, 30)
+        row.Indicator.BackgroundColor3 = Color3.fromRGB(0, 140, 255)
+        row.Text.Text = display[name] or name
+        row.Text.TextColor3 = Color3.fromRGB(220, 230, 255)
+        setToggleState(row.Track, row.Thumb, true, true)
+      else
+        row.Btn.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+        row.Indicator.BackgroundColor3 = Color3.fromRGB(60, 60, 75)
+        row.Text.Text = display[name] or name
+        row.Text.TextColor3 = Color3.fromRGB(180, 185, 200)
+        setToggleState(row.Track, row.Thumb, false, true)
+      end
+    end
+    status.Text = targetDevice and ("Active → " .. (display[targetDevice] or targetDevice)) or "Select a device"
+  end
+  local function makeRow(deviceName, order)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 42)
+    btn.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = order
+    btn.Parent = list
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
+    local indicator = Instance.new("Frame")
+    indicator.Size = UDim2.fromOffset(10, 10)
+    indicator.Position = UDim2.fromOffset(14, 16)
+    indicator.BackgroundColor3 = Color3.fromRGB(60, 60, 75)
+    indicator.BorderSizePixel = 0
+    indicator.Parent = btn
+    Instance.new("UICorner", indicator).CornerRadius = UDim.new(0, 3)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -90, 1, 0)
+    label.Position = UDim2.fromOffset(34, 0)
+    label.BackgroundTransparency = 1
+    label.Text = display[deviceName] or deviceName
+    label.TextColor3 = Color3.fromRGB(180, 185, 200)
+    label.TextSize = 15
+    label.Font = Enum.Font.GothamMedium
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = btn
+    local track, thumb = createToggle(btn, deviceName == targetDevice)
+    rows[deviceName] = { Btn = btn, Indicator = indicator, Text = label, Track = track, Thumb = thumb }
+    btn.MouseButton1Click:Connect(function()
+      if targetDevice == deviceName and not pendingDevice then return end
+      if pendingDevice == deviceName then
+        targetDevice = deviceName
+        pendingDevice = nil
+        label.Text = "Rejoining..."
+        label.TextColor3 = Color3.fromRGB(100, 200, 255)
+        refresh()
+        ApplyDevice(deviceName)
+        if writefile and queueOnTeleport then
+          pcall(function()
+            writefile("DeviceSpoof_Delta.lua", _G.__my_script_code or "")
+            queueOnTeleport([[
+local ok, src = pcall(readfile, "DeviceSpoof_Delta.lua")
+if ok and src then _G.__my_script_code = src loadstring(src)() end
+]])
+          end)
+        end
+        task.wait(0.35)
+        local ok = pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId) end)
+        if not ok then pcall(function() TeleportService:Teleport(game.PlaceId) end) end
+      else
+        pendingDevice = deviceName
+        refresh()
+      end
+    end)
+  end
+  for i, name in ipairs(platforms) do makeRow(name, i) end
+  refresh()
+  local function open()
+    panelOpen = true
+    panel.Visible = true
+    panel.Position = UDim2.new(0.5, -140, 0.5, -120)
+    TweenService:Create(panel, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -140, 0.5, -130) }):Play()
+  end
+  local function close()
+    panelOpen = false
+    pendingDevice = nil
+    refresh()
+    local t = TweenService:Create(panel, TweenInfo.new(0.15, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -140, 0.5, -120) })
+    t:Play()
+    t.Completed:Once(function() if not panelOpen then panel.Visible = false end end)
+  end
+  px.MouseButton1Click:Connect(function() if panelOpen then close() else open() end end)
+  closeBtn.MouseButton1Click:Connect(close)
+  lockBtn.MouseButton1Click:Connect(function() if panelOpen then close() else open() end end)
+  task.spawn(function()
+    local plr = Players.LocalPlayer or Players.PlayerAdded:Wait()
+    plr.CharacterAdded:Connect(function()
+      task.wait(0.8)
+      local d = getTargetDevice()
+      if d then ApplyDevice(d) end
+      FixShiftLock()
+      task.delay(1, FixShiftLock)
+    end)
+  end)
+  task.defer(FixShiftLock)
+  task.delay(1, FixShiftLock)
+  task.delay(3, FixShiftLock)
+end
+main()
+]==]
+_G.__my_script_code = SCRIPT_SOURCE
+loadstring(SCRIPT_SOURCE)()
+			]=])()
+		end)
+	end, Color3.fromRGB(30, 60, 100))
 end
 
 -- ===================== صفحة السكنات =====================
@@ -1992,7 +2575,7 @@ end
 local function openAnim()
 	main.Visible = true
 	main.Size = UDim2.fromOffset(0, 0)
-	TweenService:Create(main, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(720, 460)}):Play()
+	TweenService:Create(main, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(660, 420)}):Play()
 	TweenService:Create(blur, TweenInfo.new(0.45), {Size = 9}):Play()
 	openBtn.Text = "✕  اغلاق"
 	openBtn.BackgroundColor3 = Color3.fromRGB(255, 55, 55)

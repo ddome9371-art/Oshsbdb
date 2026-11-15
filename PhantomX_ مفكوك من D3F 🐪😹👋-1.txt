@@ -1,0 +1,1827 @@
+-- Check for table that is shared between executions.
+if not shared then
+	return warn("No shared, no script.")
+end
+
+-- Initialize Luraph globals if they do not exist.
+local scriptEnvironment = getfenv()
+
+for _, name in ipairs({ "LPH_NO_VIRTUALIZE", "PP_SCRAMBLE_NUM", "PP_SCRAMBLE_STR", "PP_SCRAMBLE_RE_NUM" }) do
+	scriptEnvironment[name] = scriptEnvironment[name] or function(...)
+		return ...
+	end
+end
+
+local PhantomX = {}
+local License = {}
+
+-- Constants.
+local CONFIG = {
+	version = "2.6.2",
+	name = "PhantomX Premium",
+	folder = "PhantomXPremium",
+	productId = "PHANTOMX",
+	platforms = "ALL_PLATFORMS",
+	discordInvite = "https://discord.gg/uRtbxxxrau",
+	windUi = "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+	deviceCheck = "https://devicemode-cctgi3ma.manus.space",
+	activatePath = "/api/license/activate",
+	heartbeatPath = "/api/license/heartbeat",
+	explosionSound = "rbxasset://sounds/impact_explosion_03.mp3",
+}
+
+local KORBLOX_LEG_ID = 139607718
+local SMOOTH_BOOST = 1.5
+local RANGE_VALUES = { "50", "100", "150", "200", "300", "500" }
+local LIGHTING_PROPERTIES = { "Brightness", "ClockTime", "FogEnd", "GlobalShadows", "OutdoorAmbient", "Ambient" }
+local HEAD_ATTACHMENTS = { "HatAttachment", "HairAttachment", "FaceFrontAttachment", "FaceCenterAttachment" }
+local EFFECT_LABELS = { "None | بدون", "Freeze | تجميد", "Lightning | صاعقة", "Burn | احتراق", "Balloon | بالون", "Bomb | بومب", "Fly | طيران", "Alert | تنبيه" }
+local LANGUAGES = { ar = "🇸🇦 العربية", en = "English 🇬🇧" }
+local ASSIST_ON_COLOR, ASSIST_OFF_COLOR = Color3.fromRGB(80, 40, 160), Color3.fromRGB(40, 20, 60)
+local ATMOSPHERE = {
+	Density = 0.25, Offset = 0.1, Color = Color3.fromRGB(200, 210, 255), Decay = Color3.fromRGB(100, 100, 120),
+	Glare = 0.2, Haze = 1.5,
+}
+local RESET_FLAGS = {
+	"assistEnabled", "speedEnabled", "rushEnabled", "orbitEnabled", "turnToggle", "camShake", "antiLagActive",
+	"lightingActive", "headlessEnabled", "korbloxEnabled", "wallsEnabled", "autoHoldActive", "grabBombActive",
+}
+
+-- Theme list: id, label, background rgb, accent rgb.
+local THEMES = {
+	{ "Dark", "داكن 🌙", { 20, 20, 25 }, { 120, 80, 255 } },
+	{ "Light", "فاتح ☀️", { 240, 240, 245 }, { 80, 80, 200 } },
+	{ "Gold", "ذهبي", { 30, 25, 10 }, { 255, 200, 50 } },
+	{ "Nuclear", "نووي", { 10, 30, 10 }, { 50, 255, 50 } },
+	{ "Sky", "سماء ☁️", { 15, 25, 40 }, { 80, 160, 255 } },
+	{ "Emerald", "زمردي 💚", { 10, 30, 20 }, { 0, 200, 100 } },
+	{ "Crimson", "قرمزي 🩸", { 30, 10, 10 }, { 200, 30, 50 } },
+	{ "Purple", "بنفسجي 🟣", { 25, 10, 35 }, { 160, 60, 255 } },
+	{ "Red", "أحمر 🔴", { 30, 10, 10 }, { 255, 40, 40 } },
+	{ "Pink", "وردي 🌸", { 30, 15, 25 }, { 255, 100, 180 } },
+}
+
+-- Services.
+local playersService = game:GetService("Players")
+local tweenService = game:GetService("TweenService")
+local runService = game:GetService("RunService")
+local userInputService = game:GetService("UserInputService")
+local httpService = game:GetService("HttpService")
+local lighting = game:GetService("Lighting")
+local debris = game:GetService("Debris")
+local coreGui = game:GetService("CoreGui")
+
+local localPlayer = playersService.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+-- State (JSON safe, this is what gets saved).
+local State = {
+	language = "ar", theme = "Dark", uiKeybind = "",
+	assistEnabled = false, assistPower = 50, assistRange = 100, reactionTime = 0.1,
+	ahDist = 50, ahOrbit = 1, ahRush = 1.5, ahSmooth = 1, smoothEnabled = false,
+	speedEnabled = false, speedValue = 16, speedMode = "WalkSpeed", rushEnabled = false,
+	camShake = false, camShakeSpeed = 1, camBoost = 1, camMult = 1,
+	orbitEnabled = false, orbitSpeed = 1, turnToggle = false,
+	antiLagActive = false, lightingActive = false, headlessEnabled = false, korbloxEnabled = false, stretchValue = 0,
+	autoHoldActive = false, grabBombActive = false, wallsEnabled = false,
+	killEffect = "none", displayName = "", skinUsername = "", pinButton = false, recordMode = false,
+	licensed = false,
+}
+
+-- Runtime.
+local loops, connections, hidden, disabledEffects = {}, {}, {}, {}
+local window, windUi, assistToggle, toggleGui, assistGui, assistButton, statsGui, nameTag
+local assistTarget, targetSince, deathConnection
+local lightingBackup, atmosphereBackup, savedDescription, baseFov, sessionToken, lastGrab = nil, nil, nil, nil, nil, 0
+local heartbeatRunning, antiLagBackup, rebuilding = false, nil, false
+local wallParams = RaycastParams.new()
+local rebuildUi, loadWindUi, windUiSource
+
+-- Locale, each entry is { arabic, english }.
+local LOCALE = {
+	welcome = { "أهلًا بك في PhantomX Premium", "Welcome to PhantomX Premium" },
+	version = { "الإصدار ", "Version " },
+	ready = { "السكربت شغّال وجاهز للاستخدام!", "Script is running and ready!" },
+	reminder = { "🕌 تذكير", "💜 Reminder" },
+	pray = { "صلّ على النبي ﷺ 🤍", "Send blessings upon the Prophet ﷺ 🤍" },
+	mainFeatures = { "الميزات الرئيسية", "Main Features" },
+	visualSettings = { "الإعدادات البصرية", "Visual Settings" },
+	savedSettings = { "الإعدادات المحفوظة", "Saved Settings" },
+	settings = { "الإعدادات", "Settings" },
+	appearance = { "المظهر", "Appearance" },
+	effects = { "المؤثرات", "Effects" },
+	info = { "المعلومات", "Info" },
+	assist = { "أسيست", "Assist" },
+	assistPower = { "قوة الأسيست", "Assist Power" },
+	assistRange = { "مدى الأسيست", "Assist Range" },
+	speed = { "السرعة", "Speed" },
+	speedLevel = { "مستوى السرعة", "Speed Level" },
+	speedType = { "نوع السرعة", "Speed Mode" },
+	camera = { "الكاميرا", "Camera" },
+	shakeSpeed = { "سرعة الاهتزاز", "Shake Speed" },
+	camBoost = { "تعزيز الكاميرا", "Camera Boost" },
+	camMult = { "مضاعف الكاميرا", "Camera Multiplier" },
+	reactionTime = { "وقت الاستجابة", "Reaction Time" },
+	orbitSpeed = { "سرعة الالتفاف", "Orbit Speed" },
+	movement = { "الحركة", "Movement" },
+	extras = { "إضافات", "Extras" },
+	enableAssist = { "تفعيل أو تعطيل ميزة الأسيست", "Enable or disable Assist" },
+	enableSpeed = { "تفعيل أو تعطيل تعديل السرعة", "Enable or disable speed" },
+	enableShake = { "تفعيل اهتزاز الكاميرا", "Enable camera shake" },
+	enableOrbit = { "تفعيل أو تعطيل الالتفاف", "Enable or disable orbit" },
+	enableRush = { "تفعيل أو تعطيل الاندفاع", "Enable or disable rush" },
+	enableSmooth = { "تفعيل أو تعطيل الدوران", "Enable or disable turning" },
+	enableAutoHold = { "تفعيل أو تعطيل ميزة أوتو هولد", "Enable or disable Auto Hold" },
+	enableGrabBomb = { "تفعيل أو تعطيل ميزة جراب بومب", "Enable or disable Grab Bomb" },
+	enableWalls = { "تشغيل أو إيقاف ميزة الجدران", "Enable or disable Walls" },
+	enableHeadless = { "تفعيل أو تعطيل مظهر هيدليس", "Enable or disable Headless" },
+	enableKorblox = { "تفعيل أو تعطيل مظهر كوربلوكس", "Enable or disable Korblox" },
+	enableAntiLag = { "تفعيل إعدادات تساعد على تقليل التقطيع", "Enable anti-lag settings" },
+	enableLighting = { "تفعيل أو تعطيل تعديل الإضاءة", "Enable or disable lighting" },
+	username = { "اسم المستخدم", "Username" },
+	applySkin = { "تطبيق المظهر", "Apply Skin" },
+	resetSkin = { "إعادة ضبط المظهر", "Reset Skin" },
+	randomSkin = { "مظهر عشوائي", "Random Skin" },
+	displayName = { "الاسم المعروض", "Display Name" },
+	applyName = { "تطبيق الاسم", "Apply Name" },
+	resetName = { "إعادة ضبط الاسم", "Reset Name" },
+	stretch = { "قيمة التمديد", "Screen Stretch" },
+	resetStretch = { "إعادة ضبط التمديد", "Reset Stretch" },
+	theme = { "الثيم", "Theme" },
+	killEffects = { "مؤثرات القتل", "Kill Effects" },
+	testEffect = { "تجربة المؤثر", "Test Effect" },
+	selectLang = { "اختر اللغة", "Select Language" },
+	langChanged = { "تم تغيير اللغة", "Language changed" },
+	pinButton = { "زر التثبيت", "Pin Button" },
+	recordMode = { "وضع التسجيل", "Recording Mode" },
+	setKeybind = { "تعيين اختصار الواجهة", "Set UI Keybind" },
+	pressKey = { "اضغط أي زر...", "Press any key..." },
+	keySet = { "تم تعيين الزر: ", "Key set: " },
+	stats = { "إظهار الإحصائيات", "Stats Overlay" },
+	resetPos = { "إعادة ضبط الموقع", "Reset Position" },
+	closeScript = { "إغلاق السكربت", "Close Script" },
+	scriptClosed = { "تم إغلاق السكربت", "Script closed" },
+	developers = { "مطورو PhantomX Premium", "PhantomX Premium Developers" },
+	joinDiscord = { "انضم لديسكورد", "Join Discord" },
+	copyLink = { "نسخ الرابط", "Copy Link" },
+	linkCopied = { "تم نسخ الرابط", "Link copied" },
+	contactDev = { "تواصل مع المطور", "Contact Developer" },
+	save = { "حفظ الإعدادات", "Save" },
+	load = { "تحميل الإعدادات", "Load" },
+	saved = { "تم الحفظ", "Saved" },
+	loaded = { "تم التحميل", "Loaded" },
+	configManager = { "حفظ الإعدادات وتحميلها وقت ما تبي", "Save your settings and load them anytime" },
+	userNotFound = { "المستخدم غير موجود", "User not found" },
+	failed = { "فشل", "Failed" },
+	failedUI = { "فشل تحميل الواجهة", "Failed to load UI" },
+	invalidKey = { "مفتاح الترخيص غير صالح", "Invalid license key" },
+	activationFailed = { "فشل التفعيل، تواصل مع الدعم", "Activation failed. Contact support" },
+	badResponse = { "رد غير صالح من السيرفر", "Invalid response from server. Try again later" },
+	licenseVerified = { "تم التحقق من الترخيص بنجاح!", "License verified successfully!" },
+	licenseRejected = { "تم رفض الترخيص", "License Rejected" },
+	licenseNotFound = { "المستخدم لا يطابق هذا الترخيص", "User does not match this license" },
+	licenseExpired = { "انتهت الجلسة، أعد تشغيل السكربت", "Session expired. Restart the script" },
+	sessionRevoked = { "تم إلغاء الجلسة من المطور", "Session revoked by developer" },
+	killAlert = { "تم القضاء على الهدف", "Target eliminated" },
+}
+
+-- Descriptions shown under each element, keyed by the label key.
+local DESCRIPTIONS = {
+	enableAssist = { "تفعيل أو تعطيل الأسيست", "Enable or disable Assist" },
+	assistPower = { "عدّل قوة الأسيست", "Adjust Assist strength" },
+	assistRange = { "حدد مدى الأسيست", "Set the Assist range" },
+	enableSpeed = { "تفعيل أو تعطيل تعديل السرعة", "Enable or disable speed adjustments" },
+	speedLevel = { "مستوى السرعة", "Speed level" },
+	speedType = { "اختر طريقة تعديل السرعة", "Choose how speed is adjusted" },
+	enableShake = { "تفعيل اهتزاز الكاميرا", "Enable Camera Shake" },
+	shakeSpeed = { "عدّل سرعة اهتزاز الكاميرا", "Adjust the camera shake speed" },
+	camBoost = { "عدّل مقدار تعزيز الكاميرا", "Adjust the camera boost amount" },
+	camMult = { "عدّل استجابة الكاميرا", "Adjust camera responsiveness" },
+	reactionTime = { "عدّل وقت استجابة الميزة", "Adjust the feature's reaction time" },
+	enableOrbit = { "تفعيل أو تعطيل الدوران", "Enable or disable turning" },
+	orbitSpeed = { "عدّل سرعة الدوران", "Adjust the turning speed" },
+	enableRush = { "تفعيل أو تعطيل الاندفاع", "Enable or disable Rush" },
+	enableSmooth = { "عدّل سلاسة الحركة", "Adjust movement smoothness" },
+	enableAutoHold = { "تفعيل أو تعطيل أوتو هولد", "Enable or disable Auto Hold" },
+	enableGrabBomb = { "تفعيل أو تعطيل جراب بومب", "Enable or disable Grab Bomb" },
+	enableWalls = { "تفعيل ميزة الجدران", "Enable Wall Feature" },
+	enableHeadless = { "تفعيل أو تعطيل مظهر هيدليس", "Enable or disable the Headless look" },
+	enableKorblox = { "تفعيل أو تعطيل مظهر كوربلوكس", "Enable or disable the Korblox look" },
+	enableAntiLag = { "تفعيل إعدادات قد تقلل التقطيع", "Enable settings that may reduce lag" },
+	enableLighting = { "تفعيل أو تعطيل تعديل الإضاءة", "Enable or disable lighting adjustments" },
+	username = { "اكتب اسم المستخدم للمظهر", "Enter username for skin" },
+	displayName = { "اكتب الاسم اللي تبي يظهر", "Enter the name you want to display" },
+	stretch = { "عدّل مقدار تمديد الشاشة", "Adjust the screen stretch amount" },
+	killEffects = { "اختر المؤثر اللي تبيه", "Choose the effect you want" },
+	pinButton = { "تفعيل أو تعطيل زر التثبيت", "Enable or disable the Pin button" },
+	recordMode = { "تفعيل أو تعطيل وضع التسجيل", "Enable or disable recording mode" },
+	setKeybind = { "اختر زر لإظهار أو إخفاء الواجهة", "Choose a key to show or hide the interface" },
+	resetPos = { "إعادة ضبط الموقع", "Reset position" },
+}
+
+local LICENSE_ERRORS = {
+	INVALID_KEY = "licenseRejected", ACTIVATION_FAILED = "licenseRejected", LICENSE_NOT_FOUND = "licenseNotFound",
+	PRODUCT_MISMATCH = "licenseExpired", SESSION_EXPIRED = "licenseExpired", SESSION_REVOKED = "sessionRevoked",
+}
+
+---Translate a locale key to the current language.
+---@param key string
+---@return string
+local function translate(key)
+	local entry = LOCALE[key]
+	return entry and entry[State.language == "en" and 2 or 1] or key
+end
+
+---Get the description of an element.
+---@param key string
+---@return string?
+local function describe(key)
+	local entry = DESCRIPTIONS[key]
+	return entry and entry[State.language == "en" and 2 or 1] or nil
+end
+
+---Create an instance, apply properties, then parent it.
+---@param className string
+---@param properties table
+---@param parent Instance?
+---@return Instance
+local function create(className, properties, parent)
+	local object = Instance.new(className)
+
+	for property, value in pairs(properties) do
+		object[property] = value
+	end
+
+	object.Parent = parent
+	return object
+end
+
+---Get the safest parent for our guis.
+local function getGuiParent()
+	local success, parent = pcall(gethui)
+	return success and parent or playerGui
+end
+
+local function getCharacter()
+	return localPlayer.Character
+end
+
+local function getHumanoid()
+	local character = getCharacter()
+	return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+local function getRoot()
+	local character = getCharacter()
+	return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+---Send a request through the executor request function.
+---@param options table
+---@return table?
+local function httpRequest(options)
+	local requestFunction = request or http_request or (syn and syn.request) or (http and http.request)
+
+	if not requestFunction then
+		return nil
+	end
+
+	local success, response = pcall(requestFunction, options)
+	return success and response or nil
+end
+
+---Show a small notification at the top of the screen.
+---@param title string
+---@param text string
+---@param duration number?
+local function notify(title, text, duration)
+	if State.recordMode then
+		return
+	end
+
+	local gui = create("ScreenGui", { Name = "PhantomNotification", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 99 }, getGuiParent())
+
+	local frame = create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(280, 70), Position = UDim2.new(0.5, 0, 0, -80),
+		BackgroundColor3 = Color3.fromRGB(22, 22, 28), BorderSizePixel = 0,
+	}, gui)
+
+	create("UICorner", { CornerRadius = UDim.new(0, 10) }, frame)
+	create("UIStroke", { Color = Color3.fromRGB(120, 80, 255), Thickness = 1.2 }, frame)
+
+	create("TextLabel", {
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = tostring(title) .. "\n" .. tostring(text),
+		TextColor3 = Color3.new(1, 1, 1), TextSize = 14, Font = Enum.Font.GothamMedium, TextWrapped = true,
+	}, frame)
+
+	tweenService:Create(frame, TweenInfo.new(0.35, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, 0, 0, 20) }):Play()
+
+	task.delay(duration or 3, function()
+		local tween = tweenService:Create(frame, TweenInfo.new(0.3), { Position = UDim2.new(0.5, 0, 0, -80) })
+		tween:Play()
+		tween.Completed:Wait()
+		gui:Destroy()
+	end)
+end
+
+---Track a connection so detach can clean it up.
+local function track(connection)
+	table.insert(connections, connection)
+	return connection
+end
+
+---Turn a named signal connection on or off.
+---@param name string
+---@param enabled boolean
+---@param signal RBXScriptSignal?
+---@param callback function?
+local function setLoop(name, enabled, signal, callback)
+	if loops[name] then
+		loops[name]:Disconnect()
+		loops[name] = nil
+	end
+
+	if enabled then
+		loops[name] = signal:Connect(callback)
+	end
+end
+
+---Remove every leftover WindUI gui, a half destroyed one breaks new windows.
+local function cleanWindUiGuis()
+	for _, parent in ipairs({ getGuiParent(), coreGui, playerGui }) do
+		pcall(function()
+			for _, child in ipairs(parent:GetChildren()) do
+				if child.Name:sub(1, 6) == "WindUI" then
+					child:Destroy()
+				end
+			end
+		end)
+	end
+end
+
+---Show or hide the window, every WindUI version is handled.
+local function toggleWindow()
+	-- The window never loaded, build it again.
+	if not window then
+		return rebuildUi()
+	end
+
+	if type(window.Toggle) == "function" and pcall(window.Toggle, window) then
+		return
+	end
+
+	local method = window.Closed and window.Open or window.Close
+
+	if type(method) == "function" and pcall(method, window) then
+		return
+	end
+
+	-- Last resort, flip the WindUI gui directly.
+	for _, parent in ipairs({ getGuiParent(), coreGui }) do
+		local gui = parent:FindFirstChild("WindUI")
+
+		if gui then
+			gui.Enabled = not gui.Enabled
+			return
+		end
+	end
+
+	-- The gui is gone, build a new window.
+	window = nil
+	rebuildUi()
+end
+
+-- License.
+
+function License.getKey()
+	local path = CONFIG.folder .. "/license.txt"
+	local fileKey = isfile and isfile(path) and readfile(path) or nil
+	fileKey = fileKey and fileKey:match("^%s*(.-)%s*$") or nil
+	return getgenv().PhantomXLicenseKey or fileKey
+end
+
+function License.saveKey(key)
+	getgenv().PhantomXLicenseKey = key
+
+	pcall(function()
+		if makefolder and not isfolder(CONFIG.folder) then
+			makefolder(CONFIG.folder)
+		end
+
+		writefile(CONFIG.folder .. "/license.txt", tostring(key))
+	end)
+end
+
+function License.heartbeat()
+	if not sessionToken then
+		return
+	end
+
+	httpRequest({
+		Url = CONFIG.deviceCheck .. CONFIG.heartbeatPath, Method = "POST", Headers = { ["Content-Type"] = "application/json" },
+		Body = httpService:JSONEncode({ sessionToken = sessionToken, productId = CONFIG.productId }),
+	})
+end
+
+---Activate a license key and keep the session alive.
+---@param key string
+---@return boolean
+function License.activate(key)
+	key = key or License.getKey()
+
+	if not key or key == "" then
+		notify("License Error", translate("invalidKey"))
+		return false
+	end
+
+	local response = httpRequest({
+		Url = CONFIG.deviceCheck .. CONFIG.activatePath, Method = "POST", Headers = { ["Content-Type"] = "application/json" },
+		Body = httpService:JSONEncode({
+			licenseKey = key, productId = CONFIG.productId, userId = localPlayer.UserId,
+			username = localPlayer.Name, platform = CONFIG.platforms,
+		}),
+	})
+
+	if not response or not response.Body then
+		notify("License Error", translate("activationFailed"))
+		return false
+	end
+
+	local success, data = pcall(httpService.JSONDecode, httpService, response.Body)
+
+	if not success or type(data) ~= "table" then
+		notify("License Error", translate("badResponse"))
+		return false
+	end
+
+	local errorKey = LICENSE_ERRORS[data.error] or LICENSE_ERRORS[data.status]
+
+	if errorKey then
+		notify("License Error", errorKey == "licenseRejected" and data.message or translate(errorKey))
+		return false
+	end
+
+	if not (data.sessionToken or data.success or data.status == "Activated") then
+		notify("License Error", translate("licenseRejected"))
+		return false
+	end
+
+	sessionToken, State.licensed = data.sessionToken or "active", true
+	License.saveKey(key)
+	notify("PhantomX", translate("licenseVerified"))
+
+	-- Heartbeat every minute while the session is alive, never run two loops.
+	if not heartbeatRunning then
+		heartbeatRunning = true
+
+		task.spawn(function()
+			while sessionToken do
+				task.wait(60)
+				License.heartbeat()
+			end
+
+			heartbeatRunning = false
+		end)
+	end
+
+	return true
+end
+
+-- Kill effects.
+local Effects = {}
+
+local function forEachPart(character, callback)
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			callback(part)
+		end
+	end
+end
+
+local function playSound(volume)
+	local sound = create("Sound", { SoundId = CONFIG.explosionSound, Volume = volume }, workspace)
+	sound:Play()
+	debris:AddItem(sound, 5)
+end
+
+---Push the character with a temporary velocity.
+local function launch(character, velocity, maxForce, duration)
+	local root = character:FindFirstChild("HumanoidRootPart")
+
+	if root then
+		debris:AddItem(create("BodyVelocity", { Velocity = velocity, MaxForce = maxForce }, root), duration)
+	end
+end
+
+function Effects.freeze(character)
+	local backups = {}
+
+	forEachPart(character, function(part)
+		backups[part] = { part.Anchored, part.Color, part.Material }
+		part.Anchored, part.Color, part.Material = true, Color3.fromRGB(150, 220, 255), Enum.Material.Ice
+	end)
+
+	task.delay(3, function()
+		for part, backup in pairs(backups) do
+			if part.Parent then
+				part.Anchored, part.Color, part.Material = backup[1], backup[2], backup[3]
+			end
+		end
+	end)
+end
+
+function Effects.lightning(character)
+	local root = character:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		return
+	end
+
+	local bolt = create("Part", {
+		Size = Vector3.new(0.3, 20, 0.3), Position = root.Position + Vector3.new(0, 10, 0), Anchored = true,
+		CanCollide = false, Material = Enum.Material.Neon, Color = Color3.fromRGB(200, 220, 255),
+	}, workspace)
+
+	playSound(0.8)
+	debris:AddItem(bolt, 0.4)
+end
+
+function Effects.burn(character)
+	forEachPart(character, function(part)
+		debris:AddItem(create("Fire", { Size = 5, Heat = 10 }, part), 3)
+	end)
+
+	playSound(0.5)
+end
+
+function Effects.balloon(character)
+	launch(character, Vector3.new(0, 80, 0), Vector3.new(0, 1e5, 0), 2)
+end
+
+function Effects.bomb(character)
+	local root = character:FindFirstChild("HumanoidRootPart")
+
+	if root then
+		create("Explosion", { Position = root.Position, BlastPressure = 0, BlastRadius = 8, DestroyJointRadiusPercent = 0 }, workspace)
+		playSound(1)
+	end
+end
+
+function Effects.fly(character)
+	launch(character, Vector3.new(math.random(-50, 50), 60, math.random(-50, 50)), Vector3.new(1e5, 1e5, 1e5), 1.5)
+end
+
+function Effects.alert()
+	notify("PhantomX", translate("killAlert"), 2)
+end
+
+---Play a kill effect on a character.
+---@param name string
+---@param character Model?
+local function playKillEffect(name, character)
+	local effect = Effects[tostring(name):lower()]
+
+	if character and effect then
+		effect(character)
+	end
+end
+
+-- Features.
+
+local function applySensitivity()
+	userInputService.MouseDeltaSensitivity = State.camBoost * State.camMult
+end
+
+local function applyAntiLag()
+	pcall(function()
+		if not State.antiLagActive then
+			-- Only restore what we changed, detach must not touch an untouched game.
+			if antiLagBackup then
+				settings().Rendering.QualityLevel = antiLagBackup.quality
+				lighting.GlobalShadows = antiLagBackup.shadows
+				antiLagBackup = nil
+			end
+
+			for _, object in ipairs(disabledEffects) do
+				pcall(function()
+					object.Enabled = true
+				end)
+			end
+
+			return table.clear(disabledEffects)
+		end
+
+		antiLagBackup = antiLagBackup or { quality = settings().Rendering.QualityLevel, shadows = lighting.GlobalShadows }
+		settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+		lighting.GlobalShadows = false
+
+		for _, object in ipairs(workspace:GetDescendants()) do
+			local isEffect = object:IsA("ParticleEmitter") or object:IsA("Trail") or object:IsA("Smoke") or object:IsA("Fire")
+
+			if isEffect and object.Enabled then
+				object.Enabled = false
+				table.insert(disabledEffects, object)
+			end
+		end
+	end)
+end
+
+local function applyLighting()
+	for _, name in ipairs({ "PX_Bloom", "PX_ColorCorrection", "PX_SunRays", "PX_Atmosphere" }) do
+		local effect = lighting:FindFirstChild(name)
+
+		if effect then
+			effect:Destroy()
+		end
+	end
+
+	-- Restore whatever the game had before.
+	if not State.lightingActive then
+		for property, value in pairs(lightingBackup or {}) do
+			lighting[property] = value
+		end
+
+		for property, value in pairs(atmosphereBackup and atmosphereBackup.values or {}) do
+			atmosphereBackup.object[property] = value
+		end
+
+		lightingBackup, atmosphereBackup = nil, nil
+		return
+	end
+
+	if not lightingBackup then
+		lightingBackup = {}
+
+		for _, property in ipairs(LIGHTING_PROPERTIES) do
+			lightingBackup[property] = lighting[property]
+		end
+	end
+
+	lighting.Brightness, lighting.ClockTime, lighting.FogEnd, lighting.GlobalShadows = 2.2, 14, 1e6, true
+	lighting.OutdoorAmbient, lighting.Ambient = Color3.fromRGB(140, 140, 150), Color3.fromRGB(80, 80, 90)
+
+	create("BloomEffect", { Name = "PX_Bloom", Intensity = 0.4, Size = 24, Threshold = 1.5 }, lighting)
+	create("ColorCorrectionEffect", { Name = "PX_ColorCorrection", Brightness = 0.05, Contrast = 0.1, Saturation = 0.15 }, lighting)
+	create("SunRaysEffect", { Name = "PX_SunRays", Intensity = 0.08, Spread = 0.5 }, lighting)
+
+	local atmosphere = lighting:FindFirstChildOfClass("Atmosphere")
+
+	if not atmosphere then
+		local properties = { Name = "PX_Atmosphere" }
+
+		for property, value in pairs(ATMOSPHERE) do
+			properties[property] = value
+		end
+
+		return create("Atmosphere", properties, lighting)
+	end
+
+	if not atmosphereBackup then
+		atmosphereBackup = { object = atmosphere, values = {} }
+
+		for property in pairs(ATMOSPHERE) do
+			atmosphereBackup.values[property] = atmosphere[property]
+		end
+	end
+
+	for property, value in pairs(ATMOSPHERE) do
+		atmosphere[property] = value
+	end
+end
+
+local function applyStretch()
+	local camera = workspace.CurrentCamera
+
+	if State.stretchValue > 0 and camera then
+		baseFov = baseFov or camera.FieldOfView
+	end
+
+	setLoop("stretch", State.stretchValue > 0 and baseFov ~= nil, runService.RenderStepped, function()
+		workspace.CurrentCamera.FieldOfView = baseFov + State.stretchValue / 100 * 50
+	end)
+
+	if State.stretchValue <= 0 and baseFov and camera then
+		camera.FieldOfView, baseFov = baseFov, nil
+	end
+end
+
+---Hide or restore the head, its decals and head accessories.
+local function applyHeadless()
+	if not State.headlessEnabled then
+		for object, transparency in pairs(hidden) do
+			pcall(function()
+				object.Transparency = transparency
+			end)
+		end
+
+		return table.clear(hidden)
+	end
+
+	local character = getCharacter()
+	local head = character and character:FindFirstChild("Head")
+
+	if not head then
+		return
+	end
+
+	local function hide(object)
+		hidden[object] = hidden[object] or object.Transparency
+		object.Transparency = 1
+	end
+
+	hide(head)
+
+	for _, child in ipairs(head:GetChildren()) do
+		if child:IsA("Decal") or child:IsA("Texture") then
+			hide(child)
+		end
+	end
+
+	for _, accessory in ipairs(character:GetChildren()) do
+		local handle = accessory:IsA("Accessory") and accessory:FindFirstChild("Handle")
+
+		for _, attachment in ipairs(handle and HEAD_ATTACHMENTS or {}) do
+			if handle:FindFirstChild(attachment) then
+				hide(handle)
+				break
+			end
+		end
+	end
+end
+
+local function applyKorblox()
+	local humanoid = getHumanoid()
+
+	if not humanoid then
+		return
+	end
+
+	pcall(function()
+		if State.korbloxEnabled then
+			savedDescription = savedDescription or humanoid:GetAppliedDescription()
+
+			local description = humanoid:GetAppliedDescription()
+			description.RightLeg = KORBLOX_LEG_ID
+			humanoid:ApplyDescription(description)
+		elseif savedDescription then
+			humanoid:ApplyDescription(savedDescription)
+			savedDescription = nil
+		end
+	end)
+end
+
+---Apply another user's look to our character.
+---@param userId number
+---@return boolean
+local function applyUserId(userId)
+	local humanoid = getHumanoid()
+	local success, description = pcall(playersService.GetHumanoidDescriptionFromUserId, playersService, userId)
+
+	if not (success and description and humanoid) then
+		return false
+	end
+
+	return (pcall(humanoid.ApplyDescription, humanoid, description))
+end
+
+local function applySkin(username)
+	State.skinUsername = username or State.skinUsername
+
+	if State.skinUsername == "" then
+		return
+	end
+
+	task.spawn(function()
+		local success, userId = pcall(playersService.GetUserIdFromNameAsync, playersService, State.skinUsername)
+
+		if success and applyUserId(userId) then
+			return notify(translate("applySkin"), State.skinUsername)
+		end
+
+		notify("Skin", translate("userNotFound"))
+	end)
+end
+
+local function resetSkin()
+	State.skinUsername = ""
+	task.spawn(applyUserId, localPlayer.UserId)
+end
+
+local function randomSkin()
+	task.spawn(function()
+		for _ = 1, 5 do
+			local userId = math.random(1000000, 1500000000)
+
+			if applyUserId(userId) then
+				return notify("Random Skin", "#" .. userId)
+			end
+		end
+
+		notify("Random Skin", translate("failed"))
+	end)
+end
+
+local function applyNameSpoof(name)
+	State.displayName = name or State.displayName
+
+	if nameTag then
+		nameTag:Destroy()
+		nameTag = nil
+	end
+
+	local character = getCharacter()
+	local head = character and character:FindFirstChild("Head")
+
+	if State.displayName == "" or not head then
+		return
+	end
+
+	nameTag = create("BillboardGui", {
+		Name = "PhantomX_NameSpoof", Size = UDim2.fromOffset(200, 40), StudsOffset = Vector3.new(0, 2.5, 0),
+		AlwaysOnTop = true, Adornee = head,
+	}, head)
+
+	create("TextLabel", {
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = State.displayName, TextColor3 = Color3.new(1, 1, 1),
+		TextStrokeTransparency = 0.5, Font = Enum.Font.GothamBold, TextScaled = true,
+	}, nameTag)
+end
+
+local function resetName()
+	State.displayName = ""
+	applyNameSpoof()
+end
+
+---Find the closest living player inside the range.
+---@param range number
+---@return Player?
+local function getNearestPlayer(range)
+	local root = getRoot()
+
+	if not root then
+		return nil
+	end
+
+	local best, bestDistance = nil, range
+
+	for _, player in ipairs(playersService:GetPlayers()) do
+		local character = player.Character
+		local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+		if player == localPlayer or not targetRoot or not humanoid or humanoid.Health <= 0 then
+			continue
+		end
+
+		local distance = (targetRoot.Position - root.Position).Magnitude
+
+		if distance < bestDistance then
+			best, bestDistance = player, distance
+		end
+	end
+
+	return best
+end
+
+---Play the selected kill effect when the current target dies.
+---@param player Player?
+local function watchTargetDeath(player)
+	-- The old connection lingers so the death that dropped the target still counts.
+	local oldConnection = deathConnection
+	deathConnection = nil
+
+	if oldConnection then
+		task.delay(1, function()
+			oldConnection:Disconnect()
+		end)
+	end
+
+	local character = player and player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+	if humanoid then
+		deathConnection = humanoid.Died:Connect(function()
+			playKillEffect(State.killEffect, character)
+		end)
+	end
+end
+
+local function assistStep()
+	local target = State.assistEnabled and getNearestPlayer(State.assistRange) or nil
+
+	if target ~= assistTarget then
+		assistTarget, targetSince = target, os.clock()
+		watchTargetDeath(target)
+	end
+
+	local head = target and target.Character and target.Character:FindFirstChild("Head")
+	local camera = workspace.CurrentCamera
+
+	if not head or not camera or os.clock() - targetSince < State.reactionTime then
+		return
+	end
+
+	local alpha = math.clamp(State.assistPower / 100 * 0.2 * State.ahSmooth, 0, 1)
+	local origin = camera.CFrame.Position
+	local offset = head.Position - origin
+
+	if offset.Magnitude < 0.01 then
+		return
+	end
+
+	local direction = camera.CFrame.LookVector:Lerp(offset.Unit, alpha)
+
+	camera.CFrame = CFrame.lookAt(origin, origin + direction)
+end
+
+local function shakeStep()
+	local camera = workspace.CurrentCamera
+
+	if State.camShake and camera then
+		local time = os.clock() * State.camShakeSpeed * 12
+		camera.CFrame = camera.CFrame * CFrame.Angles(math.sin(time) * 0.04, math.cos(time * 1.4) * 0.04, 0)
+	end
+end
+
+local function orbitStep(delta)
+	local root = getRoot()
+
+	if (State.orbitEnabled or State.turnToggle) and root then
+		root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(State.orbitSpeed * delta * 60), 0)
+	end
+end
+
+local function onRenderStep(delta)
+	assistStep()
+	shakeStep()
+	orbitStep(delta)
+end
+
+local function speedStep()
+	local humanoid, root = getHumanoid(), getRoot()
+
+	if not humanoid or not root then
+		return
+	end
+
+	local moving = humanoid.MoveDirection.Magnitude > 0
+	local vertical = Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+
+	if State.rushEnabled and moving then
+		root.AssemblyLinearVelocity = humanoid.MoveDirection * State.speedValue * State.ahRush + vertical
+	elseif State.speedEnabled and State.speedMode == "Velocity" then
+		if moving then
+			root.AssemblyLinearVelocity = humanoid.MoveDirection * State.speedValue + vertical
+		end
+	elseif State.speedEnabled and humanoid.WalkSpeed ~= State.speedValue then
+		humanoid.WalkSpeed = State.speedValue
+	end
+end
+
+local function resetSpeed()
+	local humanoid = getHumanoid()
+
+	if humanoid then
+		humanoid.WalkSpeed = 16
+	end
+end
+
+---Slide along walls instead of stopping against them.
+local function wallStep()
+	local root = getRoot()
+
+	if not root then
+		return
+	end
+
+	wallParams.FilterDescendantsInstances = { getCharacter() }
+
+	local result = workspace:Raycast(root.Position, root.CFrame.LookVector * 2, wallParams)
+
+	if not result then
+		return
+	end
+
+	local velocity = root.AssemblyLinearVelocity
+	local into = velocity:Dot(result.Normal)
+
+	if into < 0 then
+		root.AssemblyLinearVelocity = velocity - result.Normal * into
+	end
+end
+
+local function autoHoldStep()
+	local character = getCharacter()
+
+	for _, child in ipairs(character and character:GetChildren() or {}) do
+		if child:IsA("Tool") then
+			pcall(child.Activate, child)
+		end
+	end
+end
+
+---Touch nearby bombs so we pick them up.
+local function grabBombStep()
+	local root = getRoot()
+
+	if not root or not firetouchinterest or os.clock() - lastGrab < 0.25 then
+		return
+	end
+
+	lastGrab = os.clock()
+
+	for _, object in ipairs(workspace:GetChildren()) do
+		local name = object.Name:lower()
+		local isBomb = name:find("bomb") or name:find("grenade") or name:find("tnt") or name:find("explosive")
+
+		if not isBomb or not (object:IsA("BasePart") or object:IsA("Model")) then
+			continue
+		end
+
+		local part = object:IsA("BasePart") and object or object:FindFirstChildWhichIsA("BasePart", true)
+
+		if part and (part.Position - root.Position).Magnitude < 20 then
+			firetouchinterest(part, root, 0)
+			firetouchinterest(part, root, 1)
+		end
+	end
+end
+
+local function applyLoops()
+	setLoop("walls", State.wallsEnabled, runService.Heartbeat, wallStep)
+	setLoop("autoHold", State.autoHoldActive, runService.Heartbeat, autoHoldStep)
+	setLoop("grabBomb", State.grabBombActive, runService.Heartbeat, grabBombStep)
+end
+
+-- Floating gui.
+
+---Create a draggable round button, the click only counts if it was not dragged.
+---@param name string
+---@param order number
+---@param properties table
+---@param onClick function
+local function createFloatingButton(name, order, properties, onClick)
+	local gui = create("ScreenGui", { Name = name, ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = order, Enabled = not State.recordMode }, getGuiParent())
+
+	properties.TextColor3, properties.Font, properties.AutoButtonColor = Color3.new(1, 1, 1), Enum.Font.GothamBold, true
+
+	local button = create("TextButton", properties, gui)
+	create("UICorner", { CornerRadius = UDim.new(1, 0) }, button)
+
+	local moved = false
+
+	button.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		local origin, startPosition = input.Position, button.Position
+		local changed, ended
+
+		moved = false
+
+		changed = userInputService.InputChanged:Connect(function(change)
+			if change.UserInputType ~= Enum.UserInputType.MouseMovement and change.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
+
+			local delta = change.Position - origin
+			moved = moved or delta.Magnitude > 8
+
+			if moved then
+				button.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y)
+			end
+		end)
+
+		ended = input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				changed:Disconnect()
+				ended:Disconnect()
+			end
+		end)
+	end)
+
+	-- Activated is the most reliable click on both mouse and touch.
+	button.Activated:Connect(function()
+		if not moved then
+			onClick(button)
+		end
+	end)
+
+	return gui, button
+end
+
+local function refreshAssistButton()
+	if assistButton then
+		assistButton.BackgroundColor3 = State.assistEnabled and ASSIST_ON_COLOR or ASSIST_OFF_COLOR
+	end
+end
+
+---Create or destroy the floating assist button.
+local function applyPin()
+	if assistGui then
+		assistGui:Destroy()
+		assistGui, assistButton = nil, nil
+	end
+
+	if not State.pinButton then
+		return
+	end
+
+	assistGui, assistButton = createFloatingButton("PhantomX_AssistFloat", 51, {
+		Size = UDim2.fromOffset(60, 60), Position = UDim2.new(0.5, -30, 0.7, 0), Text = "ASSIST", TextSize = 11,
+		BackgroundColor3 = State.assistEnabled and ASSIST_ON_COLOR or ASSIST_OFF_COLOR,
+	}, function()
+		State.assistEnabled = not State.assistEnabled
+		refreshAssistButton()
+
+		if assistToggle then
+			pcall(assistToggle.Set, assistToggle, State.assistEnabled)
+		end
+
+		notify(translate("assist"), State.assistEnabled and "ON" or "OFF")
+	end)
+end
+
+local function createToggleButton()
+	if toggleGui then
+		return toggleGui
+	end
+
+	toggleGui = createFloatingButton("PhantomX_FloatingToggle", 50, {
+		Size = UDim2.fromOffset(50, 50), Position = UDim2.new(1, -70, 0.5, -25), BackgroundColor3 = Color3.fromRGB(30, 30, 40),
+		Text = "PX", TextSize = 16,
+	}, toggleWindow)
+
+	return toggleGui
+end
+
+local function destroyToggleButton()
+	if toggleGui then
+		toggleGui:Destroy()
+		toggleGui = nil
+	end
+end
+
+---Show or hide the stats overlay.
+---@param enabled boolean
+local function setStats(enabled)
+	setLoop("stats", false)
+
+	if statsGui then
+		statsGui:Destroy()
+		statsGui = nil
+	end
+
+	if not enabled then
+		return
+	end
+
+	statsGui = create("ScreenGui", { Name = "PhantomX_Stats", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 40, Enabled = not State.recordMode }, getGuiParent())
+
+	local label = create("TextLabel", {
+		Size = UDim2.fromOffset(200, 80), Position = UDim2.new(0, 10, 0, 10), BackgroundColor3 = Color3.fromRGB(15, 15, 20),
+		BackgroundTransparency = 0.3, TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top, Font = Enum.Font.Gotham, TextSize = 13,
+	}, statsGui)
+
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, label)
+
+	local frames, elapsed, fps = 0, 0, 0
+
+	setLoop("stats", true, runService.RenderStepped, function(delta)
+		frames += 1
+		elapsed += delta
+
+		if elapsed >= 1 then
+			fps, frames, elapsed = frames, 0, 0
+		end
+
+		label.Text = string.format("FPS: %d\nPing: %dms\nAge: %d days\nID: %d", fps, math.floor(localPlayer:GetNetworkPing() * 1000), localPlayer.AccountAge, localPlayer.UserId)
+	end)
+end
+
+---Hide every floating gui while recording.
+local function applyRecordMode()
+	for _, gui in ipairs({ toggleGui or false, assistGui or false, statsGui or false }) do
+		if gui then
+			gui.Enabled = not State.recordMode
+		end
+	end
+end
+
+-- Config.
+
+local function saveConfig(name)
+	if not writefile then
+		return notify("Config", translate("failed"))
+	end
+
+	local success = pcall(function()
+		if makefolder and not isfolder(CONFIG.folder) then
+			makefolder(CONFIG.folder)
+		end
+
+		writefile(CONFIG.folder .. "/" .. (type(name) == "string" and name or "config") .. ".json", httpService:JSONEncode(State))
+	end)
+
+	notify("Config", translate(success and "saved" or "failed"))
+end
+
+---Re-apply every feature from the current state.
+local function applyAll()
+	applySensitivity()
+	applyAntiLag()
+	applyLighting()
+	applyStretch()
+	applyHeadless()
+	applyNameSpoof()
+	applyLoops()
+	applyPin()
+	applyRecordMode()
+	task.spawn(applyKorblox)
+end
+
+local function loadConfig(name)
+	local path = CONFIG.folder .. "/" .. (type(name) == "string" and name or "config") .. ".json"
+
+	if not (isfile and isfile(path)) then
+		notify("Config", translate("failed"))
+		return nil
+	end
+
+	local success, data = pcall(function()
+		return httpService:JSONDecode(readfile(path))
+	end)
+
+	if not success or type(data) ~= "table" then
+		return nil
+	end
+
+	for key, value in pairs(data) do
+		if type(State[key]) == type(value) and key ~= "licensed" then
+			State[key] = value
+		end
+	end
+
+	applyAll()
+	task.defer(rebuildUi)
+	notify("Config", translate("loaded"))
+	return data
+end
+
+-- Setters.
+
+local function setAHDist(value)
+	State.ahDist = tonumber(value) or State.ahDist
+	State.assistRange = State.ahDist
+end
+
+local function setAHOrbit(value)
+	State.ahOrbit = tonumber(value) or State.ahOrbit
+	State.orbitSpeed = State.ahOrbit
+end
+
+local function setAHRush(value)
+	State.ahRush = tonumber(value) or State.ahRush
+end
+
+local function setAHSmooth(value)
+	State.ahSmooth = tonumber(value) or State.ahSmooth
+end
+
+local function setCamMult(value)
+	State.camMult = tonumber(value) or 1
+	applySensitivity()
+end
+
+local function setReactionTime(value)
+	State.reactionTime = tonumber(value) or 0.1
+end
+
+local function setRecording(enabled)
+	State.recordMode = not not enabled
+	applyRecordMode()
+end
+
+local function setUIKeybind(keyCode)
+	State.uiKeybind = typeof(keyCode) == "EnumItem" and keyCode.Name or tostring(keyCode)
+	notify("Keybind", translate("keySet") .. State.uiKeybind)
+end
+
+local function startWallSlide()
+	State.wallsEnabled = true
+	applyLoops()
+end
+
+local function stopWallSlide()
+	State.wallsEnabled = false
+	applyLoops()
+end
+
+local function enableAutoHold(enabled)
+	State.autoHoldActive = not not enabled
+	applyLoops()
+end
+
+local function enableGrabBomb(enabled)
+	State.grabBombActive = not not enabled
+	applyLoops()
+end
+
+local function createAssistFloating()
+	State.pinButton = true
+	applyPin()
+end
+
+local function destroyAssistFloating()
+	State.pinButton = false
+	applyPin()
+end
+
+local function toggleAssistPin()
+	State.pinButton = not State.pinButton
+	applyPin()
+end
+
+local function resetAssistPos()
+	if State.pinButton then
+		applyPin()
+	end
+end
+
+local function copyLink()
+	if setclipboard then
+		setclipboard(CONFIG.discordInvite)
+		notify(translate("reminder"), translate("linkCopied"))
+	end
+end
+
+local function contactDev()
+	if setclipboard then
+		setclipboard(CONFIG.discordInvite)
+	end
+
+	notify(translate("contactDev"), CONFIG.discordInvite)
+end
+
+---Get information about this client.
+local function getClientInfo()
+	return {
+		version = CONFIG.version, clientVersion = CONFIG.version, developer = "PhantomX Premium Developers",
+		developerName = "PhantomX", productId = CONFIG.productId, userId = localPlayer.UserId, username = localPlayer.Name,
+		accountAge = localPlayer.AccountAge, displayName = localPlayer.DisplayName,
+	}
+end
+
+-- Interface.
+
+---Apply the selected theme to WindUI, the call is best effort.
+local function applyTheme()
+	for _, theme in ipairs(THEMES) do
+		if theme[1] == State.theme and windUi then
+			local background, accent = Color3.fromRGB(table.unpack(theme[3])), Color3.fromRGB(table.unpack(theme[4]))
+
+			pcall(function()
+				windUi:AddTheme({
+					Name = theme[1], Accent = accent, Dialog = background, Outline = accent, Background = background,
+					Text = theme[1] == "Light" and Color3.new(0, 0, 0) or Color3.new(1, 1, 1),
+					Placeholder = Color3.fromRGB(140, 140, 150), Button = background:Lerp(accent, 0.2), Icon = accent,
+				})
+				windUi:SetTheme(theme[1])
+			end)
+		end
+	end
+end
+
+---Select a theme by id or label.
+---@param idOrName string
+local function selectTheme(idOrName)
+	for _, theme in ipairs(THEMES) do
+		if theme[1] == idOrName or theme[2] == idOrName then
+			State.theme = theme[1]
+			applyTheme()
+			return theme
+		end
+	end
+
+	return THEMES[1]
+end
+
+local function addToggle(tab, labelKey, field, onChange)
+	return tab:Toggle({
+		Title = translate(labelKey), Desc = describe(labelKey), Value = State[field],
+		Callback = function(value)
+			State[field] = value
+
+			if onChange then
+				onChange(value)
+			end
+		end,
+	})
+end
+
+local function addSlider(tab, labelKey, field, min, max, step, onChange)
+	return tab:Slider({
+		Title = translate(labelKey), Desc = describe(labelKey), Step = step, Value = { Min = min, Max = max, Default = State[field] },
+		Callback = function(value)
+			State[field] = value
+
+			if onChange then
+				onChange(value)
+			end
+		end,
+	})
+end
+
+local function addDropdown(tab, labelKey, values, current, onChange)
+	return tab:Dropdown({
+		Title = translate(labelKey), Desc = describe(labelKey), Values = values, Value = current,
+		Callback = function(value)
+			onChange(tostring(value))
+		end,
+	})
+end
+
+local function addButton(tab, labelKey, callback)
+	return tab:Button({ Title = translate(labelKey), Desc = describe(labelKey), Callback = callback })
+end
+
+local function addInput(tab, labelKey, field)
+	return tab:Input({
+		Title = translate(labelKey), Desc = describe(labelKey), Placeholder = translate(labelKey), Value = State[field],
+		Callback = function(value)
+			State[field] = tostring(value)
+		end,
+	})
+end
+
+---Build the whole WindUI window from the current state.
+local function buildUi()
+	window = windUi:CreateWindow({ Title = CONFIG.name, Author = "PhantomX", Folder = CONFIG.folder })
+	PhantomX.Window = window
+
+	local main = window:Tab({ Title = translate("mainFeatures") })
+
+	main:Section({ Title = translate("assist") })
+	assistToggle = addToggle(main, "enableAssist", "assistEnabled", refreshAssistButton)
+	addSlider(main, "assistPower", "assistPower", 0, 100, 1)
+	addDropdown(main, "assistRange", RANGE_VALUES, tostring(State.assistRange), function(value)
+		setAHDist(value)
+	end)
+
+	main:Section({ Title = translate("speed") })
+	addToggle(main, "enableSpeed", "speedEnabled", function(value)
+		if not value then
+			resetSpeed()
+		end
+	end)
+	addSlider(main, "speedLevel", "speedValue", 16, 250, 1)
+	addDropdown(main, "speedType", { "WalkSpeed", "Velocity" }, State.speedMode, function(value)
+		if value == State.speedMode then
+			return
+		end
+
+		State.speedMode = value
+		resetSpeed()
+	end)
+
+	main:Section({ Title = translate("camera") })
+	addToggle(main, "enableShake", "camShake")
+	addSlider(main, "shakeSpeed", "camShakeSpeed", 1, 20, 1)
+	addSlider(main, "camBoost", "camBoost", 0.1, 5, 0.1, applySensitivity)
+
+	main:Section({ Title = translate("movement") })
+	addToggle(main, "enableOrbit", "orbitEnabled", function(value)
+		State.turnToggle = value
+	end)
+	addSlider(main, "orbitSpeed", "orbitSpeed", 1, 30, 1, setAHOrbit)
+	addToggle(main, "enableRush", "rushEnabled")
+	addToggle(main, "enableSmooth", "smoothEnabled", function(value)
+		setAHSmooth(value and SMOOTH_BOOST or 1)
+	end)
+
+	main:Section({ Title = translate("extras") })
+	addToggle(main, "enableAutoHold", "autoHoldActive", applyLoops)
+	addToggle(main, "enableGrabBomb", "grabBombActive", applyLoops)
+	addToggle(main, "enableWalls", "wallsEnabled", applyLoops)
+
+	local appearance = window:Tab({ Title = translate("appearance") })
+
+	addToggle(appearance, "enableHeadless", "headlessEnabled", applyHeadless)
+	addToggle(appearance, "enableKorblox", "korbloxEnabled", function()
+		task.spawn(applyKorblox)
+	end)
+	addInput(appearance, "username", "skinUsername")
+	addButton(appearance, "applySkin", function()
+		applySkin(State.skinUsername)
+	end)
+	addButton(appearance, "resetSkin", resetSkin)
+	addButton(appearance, "randomSkin", randomSkin)
+	addInput(appearance, "displayName", "displayName")
+	addButton(appearance, "applyName", function()
+		applyNameSpoof(State.displayName)
+	end)
+	addButton(appearance, "resetName", function()
+		resetName()
+		task.defer(rebuildUi)
+	end)
+
+	local visual = window:Tab({ Title = translate("visualSettings") })
+
+	addToggle(visual, "enableAntiLag", "antiLagActive", applyAntiLag)
+	addToggle(visual, "enableLighting", "lightingActive", applyLighting)
+	addSlider(visual, "stretch", "stretchValue", 0, 100, 1, applyStretch)
+	addButton(visual, "resetStretch", function()
+		State.stretchValue = 0
+		applyStretch()
+		task.defer(rebuildUi)
+	end)
+
+	local themeLabels, currentTheme = {}, THEMES[1][2]
+
+	for _, theme in ipairs(THEMES) do
+		table.insert(themeLabels, theme[2])
+		currentTheme = theme[1] == State.theme and theme[2] or currentTheme
+	end
+
+	addDropdown(visual, "theme", themeLabels, currentTheme, selectTheme)
+	addSlider(visual, "camMult", "camMult", 1, 10, 0.1, applySensitivity)
+	addSlider(visual, "reactionTime", "reactionTime", 0.05, 1, 0.05)
+
+	local effects = window:Tab({ Title = translate("effects") })
+	local currentEffect = EFFECT_LABELS[1]
+
+	for _, label in ipairs(EFFECT_LABELS) do
+		currentEffect = label:match("^%a+"):lower() == State.killEffect and label or currentEffect
+	end
+
+	addDropdown(effects, "killEffects", EFFECT_LABELS, currentEffect, function(value)
+		State.killEffect = value:match("^%a+"):lower()
+	end)
+	addButton(effects, "testEffect", function()
+		playKillEffect(State.killEffect, getCharacter())
+	end)
+
+	local settingsTab = window:Tab({ Title = translate("settings") })
+
+	addDropdown(settingsTab, "selectLang", { LANGUAGES.ar, LANGUAGES.en }, LANGUAGES[State.language], function(value)
+		local language = value:find("English") and "en" or "ar"
+
+		-- WindUI fires the callback on creation, ignore it or the ui rebuilds forever.
+		if language == State.language then
+			return
+		end
+
+		State.language = language
+		notify(translate("welcome"), translate("langChanged"))
+		task.defer(rebuildUi)
+	end)
+	addToggle(settingsTab, "pinButton", "pinButton", applyPin)
+	addToggle(settingsTab, "recordMode", "recordMode", applyRecordMode)
+	addButton(settingsTab, "setKeybind", function()
+		notify("Keybind", translate("pressKey"))
+
+		local connection
+		connection = userInputService.InputBegan:Connect(function(input, processed)
+			if processed or input.KeyCode == Enum.KeyCode.Unknown then
+				return
+			end
+
+			connection:Disconnect()
+			setUIKeybind(input.KeyCode)
+		end)
+	end)
+	settingsTab:Toggle({ Title = translate("stats"), Value = statsGui ~= nil, Callback = setStats })
+	addButton(settingsTab, "resetPos", function()
+		local root = getRoot()
+		resetAssistPos()
+
+		if root then
+			root.AssemblyLinearVelocity = Vector3.zero
+		end
+	end)
+	addButton(settingsTab, "closeScript", function()
+		PhantomX.detach()
+		notify("PhantomX", translate("scriptClosed"))
+	end)
+
+	local info = window:Tab({ Title = translate("info") })
+
+	info:Paragraph({ Title = translate("developers"), Desc = "v" .. CONFIG.version })
+	addButton(info, "joinDiscord", copyLink)
+	addButton(info, "copyLink", copyLink)
+	addButton(info, "contactDev", contactDev)
+	info:Paragraph({ Title = "Version", Desc = CONFIG.version })
+
+	local config = window:Tab({ Title = translate("savedSettings") })
+
+	addButton(config, "save", saveConfig)
+	addButton(config, "load", loadConfig)
+	config:Paragraph({ Title = "Config Manager", Desc = translate("configManager") })
+
+	return window
+end
+
+---Fetch and load the WindUI library.
+loadWindUi = function()
+	-- Download once, the source is reused for every rebuild.
+	if not windUiSource then
+		local response = httpRequest({ Url = CONFIG.windUi, Method = "GET" })
+		local body = response and response.Body
+		windUiSource = type(body) == "string" and #body > 0 and body or nil
+	end
+
+	if not windUiSource then
+		warn("Failed to download WindUI.")
+		return nil
+	end
+
+	cleanWindUiGuis()
+
+	local success, library = pcall(function()
+		return loadstring(windUiSource)()
+	end)
+
+	if not success then
+		warn(library)
+	end
+
+	windUi = success and library or nil
+	return windUi
+end
+
+---Destroy and rebuild the window so it matches the state and language.
+rebuildUi = function()
+	-- Never run two rebuilds at once.
+	if rebuilding then
+		return
+	end
+
+	rebuilding = true
+
+	if window then
+		pcall(window.Destroy, window)
+		window = nil
+	end
+
+	-- A fresh library every time, WindUI can destroy its own gui when a window closes.
+	if not loadWindUi() then
+		rebuilding = false
+		return notify("UI", translate("failedUI"))
+	end
+
+	local success, errorMessage = pcall(buildUi)
+
+	if not success then
+		warn(errorMessage)
+		notify("UI", tostring(errorMessage):sub(1, 90))
+	end
+
+	applyTheme()
+	rebuilding = false
+end
+
+-- Lifecycle.
+
+---Toggle the window when the saved key is pressed.
+local function onKeybindInput(input, processed)
+	if not processed and State.uiKeybind ~= "" and input.KeyCode.Name == State.uiKeybind then
+		toggleWindow()
+	end
+end
+
+---Re-apply the appearance features after respawning.
+local function onCharacterAdded()
+	task.wait(0.6)
+	table.clear(hidden)
+	applyHeadless()
+	applyNameSpoof()
+	task.spawn(applyKorblox)
+end
+
+---Stop every loop, restore the game and remove our guis.
+function PhantomX.detach()
+	sessionToken, State.licensed = nil, false
+
+	for name, connection in pairs(loops) do
+		connection:Disconnect()
+		loops[name] = nil
+	end
+
+	for _, connection in ipairs(connections) do
+		connection:Disconnect()
+	end
+
+	table.clear(connections)
+
+	if deathConnection then
+		deathConnection:Disconnect()
+		deathConnection = nil
+	end
+
+	-- Reset every applied feature.
+	for _, flag in ipairs(RESET_FLAGS) do
+		State[flag] = false
+	end
+
+	State.stretchValue, State.displayName, State.camBoost, State.camMult, State.pinButton = 0, "", 1, 1, false
+
+	applySensitivity()
+	applyAntiLag()
+	applyLighting()
+	applyStretch()
+	applyHeadless()
+	applyNameSpoof()
+	applyPin()
+	setStats(false)
+	resetSpeed()
+	destroyToggleButton()
+	task.spawn(applyKorblox)
+
+	if window then
+		pcall(window.Destroy, window)
+		window = nil
+	end
+
+	windUi = nil
+	cleanWindUiGuis()
+end
+
+---Load the interface, start the loops and activate the license if there is a key.
+function PhantomX.init()
+	notify(translate("welcome"), translate("version") .. CONFIG.version, 4)
+	task.wait(0.3)
+	notify(translate("reminder"), translate("pray"), 3)
+
+	local key = License.getKey()
+
+	if key then
+		task.spawn(License.activate, key)
+	end
+
+	rebuildUi()
+	createToggleButton()
+
+	track(userInputService.InputBegan:Connect(onKeybindInput))
+	track(localPlayer.CharacterAdded:Connect(onCharacterAdded))
+	setLoop("render", true, runService.RenderStepped, onRenderStep)
+	setLoop("heartbeat", true, runService.Heartbeat, speedStep)
+	notify("PhantomX", translate("ready"), 3)
+end
+
+-- Exports.
+local Descriptions = {}
+
+for key, entry in pairs(DESCRIPTIONS) do
+	Descriptions[key] = entry[2]
+end
+
+local Locale = { ar = {}, en = {} }
+
+for key, entry in pairs(LOCALE) do
+	Locale.ar[key], Locale.en[key] = entry[1], entry[2]
+end
+
+for key, value in pairs({
+	Version = CONFIG.version, Name = CONFIG.name, Config = CONFIG, State = State, Locale = Locale, License = License,
+	T = translate, Notify = notify, applyAntiLag = applyAntiLag, applyCamSensitivity = applySensitivity,
+	applyHeadless = applyHeadless, applyHeadlessMesh = applyHeadless, applyKorblox = applyKorblox,
+	applyLighting = applyLighting, applySkin = applySkin, removeHeadless = function() State.headlessEnabled = false applyHeadless() end,
+	removeKorblox = function() State.korbloxEnabled = false applyKorblox() end, resetSkin = resetSkin,
+	setAHDist = setAHDist, setAHOrbit = setAHOrbit, setAHRush = setAHRush, setAHSmooth = setAHSmooth,
+	setRecording = setRecording, createFloatingToggle = createToggleButton, destroyFloatingToggle = destroyToggleButton,
+	createAssistFloating = createAssistFloating, destroyAssistFloating = destroyAssistFloating,
+	toggleAssistPin = toggleAssistPin, resetAssistPos = resetAssistPos, createMainScript = rebuildUi,
+	startWallSlide = startWallSlide, stopWallSlide = stopWallSlide, copyLink = copyLink, save = saveConfig,
+	closeScript = function() PhantomX.detach() end, firetouchinterest = firetouchinterest, Themes = THEMES,
+	selectTheme = selectTheme, KillEffects = Effects, applyNameSpoof = applyNameSpoof, resetName = resetName,
+	randomSkin = randomSkin, applyScreenStretch = function(value) State.stretchValue = tonumber(value) or 0 applyStretch() end,
+	resetStretch = function() State.stretchValue = 0 applyStretch() end, setCamMult = setCamMult,
+	setReactionTime = setReactionTime, createStatsOverlay = function() setStats(true) end, setUIKeybind = setUIKeybind,
+	loadConfig = loadConfig, enableAutoHold = enableAutoHold, enableGrabBombFull = enableGrabBomb,
+	Descriptions = Descriptions, contactDev = contactDev, getClientInfo = getClientInfo, toggleWindow = toggleWindow,
+}) do
+	PhantomX[key] = value
+end
+
+---This is called when initialization errors.
+---@param error string
+local function onInitializeError(error)
+	warn("Failed to initialize.")
+	warn(error)
+	warn(debug.traceback())
+	PhantomX.detach()
+end
+
+-- Detach the previous instance before starting a new one.
+if shared.PhantomX then
+	shared.PhantomX.detach()
+end
+
+shared.PhantomX = PhantomX
+
+-- Safely initialize the script and handle errors.
+xpcall(PhantomX.init, onInitializeError)
+
+return PhantomX
